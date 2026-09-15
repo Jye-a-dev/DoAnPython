@@ -1,0 +1,11 @@
+{
+  "name": "smart-object-detector-client",
+  "version": "1.0.0",
+  "description": "Reflex Frontend Dashboard Client",
+  "scripts": {
+    "start": "python -m reflex run",
+    "dev": "python -m reflex run",
+    "build": "python -m reflex export"
+  }
+}
+

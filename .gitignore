@@ -1,0 +1,61 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Environments & Virtualenv
+.venv/
+venv/
+ENV/
+env/
+env.bak/
+venv.bak/
+
+# Environment Variables
+.env
+.env.*
+!.env.example
+
+# Databases
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+
+# Model Weights & Large Checkpoints
+*.pt
+*.pth
+*.onnx
+*.engine
+*.bin
+weights/
+runs/
+
+# Reflex & Frontend Build Artifacts
+.web/
+client/.web/
+client/reflex.lock/
+reflex.lock/
+.states/
+assets/external/
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Static & Uploaded Media (keep directories via .gitkeep)
+server/static/audio/*
+!server/static/audio/.gitkeep
+server/static/uploads/*
+!server/static/uploads/.gitkeep
+
+# IDEs & OS Files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db

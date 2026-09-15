@@ -1,0 +1,11 @@
+{
+  "name": "smart-object-detector-server",
+  "version": "1.0.0",
+  "description": "FastAPI Gateway Server (Port 3000) running with Pipeline Service (Port 3100)",
+  "scripts": {
+    "start": "python runner.py",
+    "dev": "python runner.py",
+    "server-only": "python -m uvicorn app:app --host 0.0.0.0 --port 3000 --reload",
+    "docs": "start http://localhost:3000/docs"
+  }
+}

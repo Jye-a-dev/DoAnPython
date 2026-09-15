@@ -1,0 +1,11 @@
+fastapi>=0.115.0
+uvicorn[standard]>=0.30.0
+sqlmodel>=0.0.22
+python-multipart>=0.0.9
+ultralytics>=8.3.0
+torch>=2.0.0
+opencv-python-headless>=4.10.0
+edge-tts>=6.1.12
+gTTS>=2.5.3
+pydantic>=2.8.0
+

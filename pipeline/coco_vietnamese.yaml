@@ -1,0 +1,88 @@
+# Cấu hình COCO 80 lớp Tiếng Việt cho Ultralytics YOLO
+path: ./data/coco  # Thư mục dataset nếu dùng để huấn luyện/fine-tune
+train: images/train2017
+val: images/val2017
+test: images/test2017
+
+names:
+  0: người
+  1: xe đạp
+  2: ô tô
+  3: xe máy
+  4: máy bay
+  5: xe buýt
+  6: tàu hỏa
+  7: xe tải
+  8: thuyền
+  9: đèn giao thông
+  10: trụ cứu hỏa
+  11: biển dừng
+  12: ghế dài
+  13: chim
+  14: mèo
+  15: chó
+  16: ngựa
+  17: cừu
+  18: bò
+  19: voi
+  20: gấu
+  21: ngựa vằn
+  22: hươu cao cổ
+  23: ba lô
+  24: cái ô
+  25: túi xách
+  26: cà vạt
+  27: va li
+  28: chai nước
+  29: ly rượu
+  30: cái cốc
+  31: cái nĩa
+  32: con dao
+  33: cái thìa
+  34: cái bát
+  35: quả chuối
+  36: quả táo
+  37: bánh mì kẹp
+  38: quả cam
+  39: súp lơ
+  40: củ cà rốt
+  41: bánh mì xúc xích
+  42: bánh pizza
+  43: bánh donut
+  44: bánh ngọt
+  45: cái ghế
+  46: ghế sofa
+  47: chậu cây
+  48: cái giường
+  49: bàn ăn
+  50: ti vi
+  51: máy tính xách tay
+  52: chuột máy tính
+  53: điều khiển
+  54: bàn phím
+  55: điện thoại
+  56: lò vi sóng
+  57: lò nướng
+  58: máy nướng bánh
+  59: bồn rửa
+  60: tủ lạnh
+  61: cuốn sách
+  62: đồng hồ
+  63: bình hoa
+  64: cái kéo
+  65: gấu bông
+  66: bàn chải
+  67: máy sấy tóc
+  68: bàn chải đánh răng
+  69: biển báo
+  70: ván trượt
+  71: giày trượt
+  72: gậy bóng chày
+  73: găng tay bóng chày
+  74: ván trượt tuyết
+  75: ván trượt sóng
+  76: vợt tennis
+  77: bóng thể thao
+  78: diều
+  79: gậy bóng chày nhỏ
+

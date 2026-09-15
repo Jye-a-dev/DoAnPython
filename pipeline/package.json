@@ -1,0 +1,12 @@
+{
+  "name": "smart-object-detector-pipeline",
+  "version": "1.0.0",
+  "description": "YOLO AI Inference and TTS Pipeline Service (Port 3100)",
+  "scripts": {
+    "start": "python -m uvicorn app:app --host 0.0.0.0 --port 3100",
+    "dev": "python -m uvicorn app:app --host 0.0.0.0 --port 3100 --reload",
+    "docs": "start http://localhost:3100/docs",
+    "download-weights": "python download_weights.py"
+  }
+}
+
