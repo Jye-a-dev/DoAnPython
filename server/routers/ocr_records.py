@@ -1,140 +1,197 @@
-from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlmodel import Session
-from server.crud.crud_ocr_record import crud_ocr_record
-from server.crud.crud_user import crud_user
-from server.database import get_session
-from server.models.common import CountResponse
-from server.models.ocr_record import OCRRecordCreate, OCRRecordRead, OCRRecordUpdate
+from datetime import datetime, timezone
 
-router = APIRouter(prefix="/api/v1/ocr-records", tags=["OCR Records"])
+from flask import request
+from flask_restx import Namespace, Resource, fields
+from sqlalchemy import func
+from sqlmodel import select
 
+from server.core.common_models import count_model, message_model
+from server.core.security import admin_required, token_required
+from server.database import get_db_session
+from server.models.ocr_record import OCRRecord
 
-@router.get(
-    "/count",
-    response_model=CountResponse,
-    summary="Get OCR records count",
-    description="Calculates total number of OCR records, optionally filtered by user ID and processing status."
-)
-def count_ocr_records(
-    user_id: Optional[int] = Query(None, description="Filter count by capturing user ID"),
-    status_filter: Optional[str] = Query(None, alias="status", description="Filter count by status (pending, approved, rejected)"),
-    session: Session = Depends(get_session)
-) -> CountResponse:
-    total = crud_ocr_record.count_filtered(
-        session=session,
-        user_id=user_id,
-        status=status_filter
-    )
-    return CountResponse(count=total)
+ns_records = Namespace("System Records CRUD & Stats", path="/api/v1/ocr-records", description="Full CRUD and stats for OCR records")
+ns_records.add_model("CountResponse", count_model)
+ns_records.add_model("MessageResponse", message_model)
 
+record_create_model = ns_records.model("OCRRecordCreateRequest", {
+    "user_id": fields.Integer(required=False, description="Owner user ID (optional, defaults to current user)"),
+    "image_url": fields.String(required=True, description="Target image URI"),
+    "raw_detected_text": fields.String(required=True, description="Extracted detected text"),
+    "ocr_json_data": fields.String(default="[]", description="JSON serialized detection data"),
+    "audio_url": fields.String(default="", description="Synthesized audio URL"),
+    "status": fields.String(default="pending", description="Status: pending, approved, rejected")
+})
 
-@router.post(
-    "",
-    response_model=OCRRecordRead,
-    status_code=status.HTTP_201_CREATED,
-    summary="Create OCR record",
-    description="Registers an immutable OCR detection record with raw text, metadata, and synthesized audio URL."
-)
-def create_ocr_record(
-    record_in: OCRRecordCreate,
-    session: Session = Depends(get_session)
-) -> OCRRecordRead:
-    # Verify capturing user exists
-    user = crud_user.get(session=session, id=record_in.user_id)
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"User with ID {record_in.user_id} does not exist."
-        )
-    return crud_ocr_record.create(session=session, obj_in=record_in)
+record_update_model = ns_records.model("OCRRecordUpdateRequest", {
+    "raw_detected_text": fields.String(description="Detected text content"),
+    "audio_url": fields.String(description="Synthesized audio URL"),
+    "status": fields.String(description="Status: pending, approved, rejected")
+})
+
+record_model = ns_records.model("OCRRecordDetail", {
+    "id": fields.Integer,
+    "user_id": fields.Integer,
+    "image_url": fields.String,
+    "raw_detected_text": fields.String,
+    "ocr_json_data": fields.String,
+    "audio_url": fields.String,
+    "status": fields.String,
+    "created_at": fields.String
+})
 
 
-@router.get(
-    "",
-    response_model=List[OCRRecordRead],
-    summary="List OCR records",
-    description="Retrieves paginated detection records ordered chronologically descending with optional filters."
-)
-def list_ocr_records(
-    skip: int = Query(0, ge=0, description="Offset for pagination"),
-    limit: int = Query(100, ge=1, le=500, description="Maximum items to return"),
-    user_id: Optional[int] = Query(None, description="Filter by user ID"),
-    status_filter: Optional[str] = Query(None, alias="status", description="Filter by status (e.g. pending, approved, rejected)"),
-    session: Session = Depends(get_session)
-) -> List[OCRRecordRead]:
-    return crud_ocr_record.get_multi_filtered(
-        session=session,
-        skip=skip,
-        limit=limit,
-        user_id=user_id,
-        status=status_filter
-    )
+@ns_records.route("/count")
+class OCRRecordCount(Resource):
+    @ns_records.doc("count_records", description="Count OCR detection records with optional status/user filtering")
+    @ns_records.param("status", "Status filter (pending, approved, rejected)", type=str)
+    @ns_records.param("user_id", "Filter by user ID", type=int)
+    @ns_records.response(200, "Success", count_model)
+    def get(self):
+        status_filter = request.args.get("status")
+        user_id = request.args.get("user_id", type=int)
+
+        with get_db_session() as session:
+            stmt = select(func.count(OCRRecord.id))
+            if status_filter:
+                stmt = stmt.where(OCRRecord.status == status_filter)
+            if user_id:
+                stmt = stmt.where(OCRRecord.user_id == user_id)
+            count = session.exec(stmt).one()
+            return {"count": count}, 200
 
 
-@router.get(
-    "/{record_id}",
-    response_model=OCRRecordRead,
-    summary="Get OCR record by ID",
-    description="Retrieves single detection record details by primary key."
-)
-def get_ocr_record(
-    record_id: int,
-    session: Session = Depends(get_session)
-) -> OCRRecordRead:
-    record = crud_ocr_record.get(session=session, id=record_id)
-    if not record:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"OCR record with ID {record_id} not found."
-        )
-    return record
+@ns_records.route("")
+class OCRRecordListCreate(Resource):
+    @ns_records.doc("list_records", description="Retrieve paginated OCR records")
+    @ns_records.param("user_id", "Filter by user ID", type=int)
+    @ns_records.param("status", "Filter by status", type=str)
+    @ns_records.param("limit", "Page size", type=int, default=10)
+    @ns_records.param("skip", "Offset", type=int, default=0)
+    @ns_records.response(200, "Success", [record_model])
+    def get(self):
+        user_id = request.args.get("user_id", type=int)
+        status_filter = request.args.get("status")
+        limit = request.args.get("limit", default=10, type=int)
+        skip = request.args.get("skip", default=0, type=int)
 
+        with get_db_session() as session:
+            stmt = select(OCRRecord)
+            if user_id:
+                stmt = stmt.where(OCRRecord.user_id == user_id)
+            if status_filter:
+                stmt = stmt.where(OCRRecord.status == status_filter)
+            stmt = stmt.order_by(OCRRecord.id.desc()).offset(skip).limit(limit)
 
-@router.put(
-    "/{record_id}",
-    response_model=OCRRecordRead,
-    summary="Update OCR record",
-    description="Updates status, image or audio pointers, or textual content of an existing record."
-)
-def update_ocr_record(
-    record_id: int,
-    record_in: OCRRecordUpdate,
-    session: Session = Depends(get_session)
-) -> OCRRecordRead:
-    record = crud_ocr_record.get(session=session, id=record_id)
-    if not record:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"OCR record with ID {record_id} not found."
-        )
+            records = session.exec(stmt).all()
+            return [
+                {
+                    "id": r.id,
+                    "user_id": r.user_id,
+                    "image_url": r.image_url,
+                    "raw_detected_text": r.raw_detected_text,
+                    "ocr_json_data": r.ocr_json_data,
+                    "audio_url": r.audio_url,
+                    "status": r.status,
+                    "created_at": r.created_at.isoformat() if hasattr(r.created_at, "isoformat") else str(r.created_at)
+                } for r in records
+            ], 200
 
-    if record_in.user_id is not None and record_in.user_id != record.user_id:
-        user = crud_user.get(session=session, id=record_in.user_id)
-        if not user:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"User with ID {record_in.user_id} does not exist."
+    @ns_records.doc("create_record", security="Bearer", description="Manually insert an OCR record")
+    @ns_records.expect(record_create_model, validate=True)
+    @ns_records.response(201, "Record created", record_model)
+    @token_required
+    def post(self, current_user: dict):
+        data = request.json or {}
+        with get_db_session() as session:
+            record = OCRRecord(
+                user_id=int(data.get("user_id", current_user["id"])),
+                image_url=data["image_url"],
+                raw_detected_text=data["raw_detected_text"],
+                ocr_json_data=data.get("ocr_json_data", "[]"),
+                audio_url=data.get("audio_url", ""),
+                status=data.get("status", "pending"),
+                created_at=datetime.now(timezone.utc)
             )
+            session.add(record)
+            session.commit()
+            session.refresh(record)
 
-    return crud_ocr_record.update(session=session, db_obj=record, obj_in=record_in)
+            return {
+                "id": record.id,
+                "user_id": record.user_id,
+                "image_url": record.image_url,
+                "raw_detected_text": record.raw_detected_text,
+                "ocr_json_data": record.ocr_json_data,
+                "audio_url": record.audio_url,
+                "status": record.status,
+                "created_at": record.created_at.isoformat() if hasattr(record.created_at, "isoformat") else str(record.created_at)
+            }, 201
 
 
-@router.delete(
-    "/{record_id}",
-    status_code=status.HTTP_204_NO_CONTENT,
-    summary="Delete OCR record",
-    description="Deletes an OCR record and cascades deletion to linked reviews."
-)
-def delete_ocr_record(
-    record_id: int,
-    session: Session = Depends(get_session)
-) -> None:
-    record = crud_ocr_record.get(session=session, id=record_id)
-    if not record:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"OCR record with ID {record_id} not found."
-        )
-    crud_ocr_record.remove(session=session, id=record_id)
+@ns_records.route("/<int:record_id>")
+class OCRRecordDetail(Resource):
+    @ns_records.doc("get_record", description="Get OCR record details by ID")
+    @ns_records.response(200, "Success", record_model)
+    @ns_records.response(404, "Record not found")
+    def get(self, record_id: int):
+        with get_db_session() as session:
+            record = session.get(OCRRecord, record_id)
+            if not record:
+                return {"detail": f"Record ID {record_id} not found."}, 404
+            return {
+                "id": record.id,
+                "user_id": record.user_id,
+                "image_url": record.image_url,
+                "raw_detected_text": record.raw_detected_text,
+                "ocr_json_data": record.ocr_json_data,
+                "audio_url": record.audio_url,
+                "status": record.status,
+                "created_at": record.created_at.isoformat() if hasattr(record.created_at, "isoformat") else str(record.created_at)
+            }, 200
 
+    @ns_records.doc("update_record", security="Bearer", description="Update record text, audio, or status")
+    @ns_records.expect(record_update_model, validate=True)
+    @ns_records.response(200, "Record updated", record_model)
+    @ns_records.response(404, "Record not found")
+    @admin_required
+    def put(self, record_id: int, current_user: dict):
+        data = request.json or {}
+        with get_db_session() as session:
+            record = session.get(OCRRecord, record_id)
+            if not record:
+                return {"detail": f"Record ID {record_id} not found."}, 404
+
+            if "raw_detected_text" in data and data["raw_detected_text"] is not None:
+                record.raw_detected_text = data["raw_detected_text"]
+            if "audio_url" in data and data["audio_url"] is not None:
+                record.audio_url = data["audio_url"]
+            if "status" in data and data["status"] is not None:
+                record.status = data["status"]
+
+            session.commit()
+            session.refresh(record)
+
+            return {
+                "id": record.id,
+                "user_id": record.user_id,
+                "image_url": record.image_url,
+                "raw_detected_text": record.raw_detected_text,
+                "ocr_json_data": record.ocr_json_data,
+                "audio_url": record.audio_url,
+                "status": record.status,
+                "created_at": record.created_at.isoformat() if hasattr(record.created_at, "isoformat") else str(record.created_at)
+            }, 200
+
+    @ns_records.doc("delete_record", security="Bearer", description="Delete OCR record by ID")
+    @ns_records.response(200, "Record deleted", message_model)
+    @ns_records.response(404, "Record not found")
+    @admin_required
+    def delete(self, record_id: int, current_user: dict):
+        with get_db_session() as session:
+            record = session.get(OCRRecord, record_id)
+            if not record:
+                return {"detail": f"Record ID {record_id} not found."}, 404
+            session.delete(record)
+            session.commit()
+            return {"message": f"Record ID {record_id} deleted successfully.", "success": True}, 200

@@ -1,129 +1,119 @@
-from typing import List
-from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlmodel import Session
-from server.crud.crud_role import crud_role
-from server.database import get_session
-from server.models.common import CountResponse
-from server.models.role import RoleCreate, RoleRead, RoleUpdate
+from flask import request
+from flask_restx import Namespace, Resource, fields
+from sqlalchemy import func
+from sqlmodel import select
 
-router = APIRouter(prefix="/api/v1/roles", tags=["Roles"])
+from server.core.common_models import count_model, message_model
+from server.core.security import admin_required
+from server.database import get_db_session
+from server.models.role import Role
 
+ns_roles = Namespace("System Roles CRUD", path="/api/v1/roles", description="Full CRUD for system roles")
+ns_roles.add_model("CountResponse", count_model)
+ns_roles.add_model("MessageResponse", message_model)
 
-@router.get(
-    "/count",
-    response_model=CountResponse,
-    summary="Get total roles count",
-    description="Calculates total number of registered role records in the system."
-)
-def count_roles(
-    session: Session = Depends(get_session)
-) -> CountResponse:
-    total = crud_role.count(session=session)
-    return CountResponse(count=total)
+role_create_model = ns_roles.model("RoleCreateRequest", {
+    "name": fields.String(required=True, description="Unique role name (e.g. admin, user, manager)"),
+    "description": fields.String(description="Role description")
+})
 
+role_update_model = ns_roles.model("RoleUpdateRequest", {
+    "name": fields.String(description="Role name"),
+    "description": fields.String(description="Role description")
+})
 
-@router.post(
-    "",
-    response_model=RoleRead,
-    status_code=status.HTTP_201_CREATED,
-    summary="Create a new role",
-    description="Registers a new role with unique name identifier and optional description."
-)
-def create_role(
-    role_in: RoleCreate,
-    session: Session = Depends(get_session)
-) -> RoleRead:
-    existing = crud_role.get_by_name(session=session, name=role_in.name)
-    if existing:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=f"Role with name '{role_in.name}' already exists."
-        )
-    return crud_role.create(session=session, obj_in=role_in)
+role_model = ns_roles.model("Role", {
+    "id": fields.Integer(description="Role ID"),
+    "name": fields.String(description="Role identifier"),
+    "description": fields.String(description="Description")
+})
 
 
-@router.get(
-    "",
-    response_model=List[RoleRead],
-    summary="List all roles",
-    description="Retrieves paginated list of system roles."
-)
-def list_roles(
-    skip: int = Query(0, ge=0, description="Offset for pagination"),
-    limit: int = Query(100, ge=1, le=500, description="Maximum items to return"),
-    session: Session = Depends(get_session)
-) -> List[RoleRead]:
-    return crud_role.get_multi(session=session, skip=skip, limit=limit)
+@ns_roles.route("/count")
+class RoleCount(Resource):
+    @ns_roles.doc("count_roles", description="Count system roles")
+    @ns_roles.response(200, "Success", count_model)
+    def get(self):
+        with get_db_session() as session:
+            count = session.exec(select(func.count(Role.id))).one()
+            return {"count": count}, 200
 
 
-@router.get(
-    "/{role_id}",
-    response_model=RoleRead,
-    summary="Get role by ID",
-    description="Retrieves detail of a specific role by its primary key."
-)
-def get_role(
-    role_id: int,
-    session: Session = Depends(get_session)
-) -> RoleRead:
-    role = crud_role.get(session=session, id=role_id)
-    if not role:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Role with ID {role_id} not found."
-        )
-    return role
+@ns_roles.route("")
+class RoleListCreate(Resource):
+    @ns_roles.doc("list_roles", description="List all system roles")
+    @ns_roles.response(200, "Success", [role_model])
+    def get(self):
+        with get_db_session() as session:
+            roles = session.exec(select(Role).order_by(Role.id.asc())).all()
+            return [{"id": r.id, "name": r.name, "description": r.description} for r in roles], 200
+
+    @ns_roles.doc("create_role", security="Bearer", description="Create a new system role")
+    @ns_roles.expect(role_create_model, validate=True)
+    @ns_roles.response(201, "Role created", role_model)
+    @ns_roles.response(400, "Duplicate role name")
+    @admin_required
+    def post(self, current_user: dict):
+        data = request.json or {}
+        name = data.get("name", "").strip()
+        description = data.get("description", "")
+        if not name:
+            return {"detail": "Tên role không được để trống."}, 400
+
+        with get_db_session() as session:
+            exists = session.exec(select(Role).where(Role.name == name)).first()
+            if exists:
+                return {"detail": f"Role '{name}' đã tồn tại."}, 400
+            new_role = Role(name=name, description=description)
+            session.add(new_role)
+            session.commit()
+            session.refresh(new_role)
+            return {"id": new_role.id, "name": new_role.name, "description": new_role.description}, 201
 
 
-@router.put(
-    "/{role_id}",
-    response_model=RoleRead,
-    summary="Update role",
-    description="Updates role details (name, description)."
-)
-def update_role(
-    role_id: int,
-    role_in: RoleUpdate,
-    session: Session = Depends(get_session)
-) -> RoleRead:
-    role = crud_role.get(session=session, id=role_id)
-    if not role:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Role with ID {role_id} not found."
-        )
-    if role_in.name and role_in.name != role.name:
-        existing = crud_role.get_by_name(session=session, name=role_in.name)
-        if existing:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail=f"Role name '{role_in.name}' is already in use."
-            )
-    return crud_role.update(session=session, db_obj=role, obj_in=role_in)
+@ns_roles.route("/<int:role_id>")
+class RoleDetail(Resource):
+    @ns_roles.doc("get_role", description="Get role details by ID")
+    @ns_roles.response(200, "Success", role_model)
+    @ns_roles.response(404, "Role not found")
+    def get(self, role_id: int):
+        with get_db_session() as session:
+            role = session.get(Role, role_id)
+            if not role:
+                return {"detail": f"Role ID {role_id} not found."}, 404
+            return {"id": role.id, "name": role.name, "description": role.description}, 200
 
+    @ns_roles.doc("update_role", security="Bearer", description="Update existing role")
+    @ns_roles.expect(role_update_model, validate=True)
+    @ns_roles.response(200, "Role updated", role_model)
+    @ns_roles.response(404, "Role not found")
+    @admin_required
+    def put(self, role_id: int, current_user: dict):
+        data = request.json or {}
+        with get_db_session() as session:
+            role = session.get(Role, role_id)
+            if not role:
+                return {"detail": f"Role ID {role_id} not found."}, 404
+            if "name" in data and data["name"]:
+                role.name = data["name"].strip()
+            if "description" in data and data["description"] is not None:
+                role.description = data["description"]
+            session.commit()
+            session.refresh(role)
+            return {"id": role.id, "name": role.name, "description": role.description}, 200
 
-@router.delete(
-    "/{role_id}",
-    status_code=status.HTTP_204_NO_CONTENT,
-    summary="Delete role",
-    description="Removes a role from the database. Will fail if foreign key references prevent deletion."
-)
-def delete_role(
-    role_id: int,
-    session: Session = Depends(get_session)
-) -> None:
-    role = crud_role.get(session=session, id=role_id)
-    if not role:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Role with ID {role_id} not found."
-        )
-    try:
-        crud_role.remove(session=session, id=role_id)
-    except Exception as e:
-        session.rollback()
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Cannot delete role: {str(e)}"
-        )
-
+    @ns_roles.doc("delete_role", security="Bearer", description="Delete role by ID")
+    @ns_roles.response(200, "Role deleted", message_model)
+    @ns_roles.response(400, "Cannot delete protected system role")
+    @ns_roles.response(404, "Role not found")
+    @admin_required
+    def delete(self, role_id: int, current_user: dict):
+        if role_id in (1, 2):
+            return {"detail": "Không thể xóa role hệ thống mặc định (admin/user)."}, 400
+        with get_db_session() as session:
+            role = session.get(Role, role_id)
+            if not role:
+                return {"detail": f"Role ID {role_id} not found."}, 404
+            session.delete(role)
+            session.commit()
+            return {"message": f"Role ID {role_id} deleted successfully.", "success": True}, 200

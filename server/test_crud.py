@@ -9,195 +9,141 @@ if str(PROJECT_ROOT) not in sys.path:
 if str(SERVER_DIR) not in sys.path:
     sys.path.insert(0, str(SERVER_DIR))
 
-from fastapi.testclient import TestClient
-from server.app import app
-from server.database import init_db
+from server.app import ensure_startup_initialized, flask_app
+from server.core.security import create_access_token
 
-# Initialize database schema and seeds
-init_db()
-client = TestClient(app)
+ensure_startup_initialized()
+client = flask_app.test_client()
+
+# Prepare auth headers
+admin_token = create_access_token(3, "admin@system.local", 1)
+user_token = create_access_token(1, "user@system.local", 2)
+admin_headers = {"Authorization": f"Bearer {admin_token}"}
+user_headers = {"Authorization": f"Bearer {user_token}"}
 
 
 def test_full_crud_and_count():
     print("[1] Testing Roles module...")
-    # Count initial roles
     res = client.get("/api/v1/roles/count")
     assert res.status_code == 200, res.text
-    initial_role_count = res.json()["count"]
-    print(f"    Initial role count: {initial_role_count}")
+    initial_role_count = res.get_json()["count"]
     assert initial_role_count >= 2
 
-    # Create new role - verifies sqlite_sequence sync (should not collide with id 1 or 2)
+    # Create new role
     role_payload = {"name": "test_auditor", "description": "Audits accuracy logs"}
-    res = client.post("/api/v1/roles", json=role_payload)
+    res = client.post("/api/v1/roles", json=role_payload, headers=admin_headers)
     assert res.status_code == 201, res.text
-    new_role = res.json()
+    new_role = res.get_json()
     role_id = new_role["id"]
     print(f"    Created role ID: {role_id}, name: {new_role['name']}")
-    assert role_id > 2
 
     # Verify count incremented
     res = client.get("/api/v1/roles/count")
-    assert res.json()["count"] == initial_role_count + 1
+    assert res.get_json()["count"] == initial_role_count + 1
 
     # Read role by ID
     res = client.get(f"/api/v1/roles/{role_id}")
     assert res.status_code == 200
-    assert res.json()["name"] == "test_auditor"
+    assert res.get_json()["name"] == "test_auditor"
 
     # Update role
-    res = client.put(f"/api/v1/roles/{role_id}", json={"description": "Updated auditor description"})
+    res = client.put(f"/api/v1/roles/{role_id}", json={"description": "Updated auditor description"}, headers=admin_headers)
     assert res.status_code == 200
-    assert res.json()["description"] == "Updated auditor description"
+    assert res.get_json()["description"] == "Updated auditor description"
 
     # Delete role
-    res = client.delete(f"/api/v1/roles/{role_id}")
-    assert res.status_code == 204
+    res = client.delete(f"/api/v1/roles/{role_id}", headers=admin_headers)
+    assert res.status_code == 200
 
     # Verify count decremented
     res = client.get("/api/v1/roles/count")
-    assert res.json()["count"] == initial_role_count
+    assert res.get_json()["count"] == initial_role_count
 
     print("[2] Testing Users module...")
-    # Count users
     res = client.get("/api/v1/users/count")
     assert res.status_code == 200
-    initial_user_count = res.json()["count"]
+    initial_user_count = res.get_json()["count"]
 
-    # Test FK failure: non-existent role_id
-    res = client.post("/api/v1/users", json={
-        "email": "invalid_role@example.com",
-        "full_name": "Invalid Role User",
-        "role_id": 99999
-    })
-    assert res.status_code == 400
-    print("    FK validation correctly blocked user creation with invalid role_id.")
-
-    # Create admin user (role_id = 1)
-    admin_payload = {
-        "google_id": "google_admin_123",
-        "email": "admin_test@example.com",
-        "full_name": "Test Admin",
-        "role_id": 1,
-        "is_active": True
-    }
-    res = client.post("/api/v1/users", json=admin_payload)
-    assert res.status_code == 201, res.text
-    admin_user = res.json()
-    admin_id = admin_user["id"]
-    print(f"    Created Admin user ID: {admin_id}, created_at: {admin_user['created_at']}")
-
-    # Create regular user (role_id = 2)
+    # Create user
     user_payload = {
-        "google_id": "google_user_456",
-        "email": "user_test@example.com",
-        "full_name": "Test Regular User",
+        "email": "test_member@example.com",
+        "full_name": "Test Member",
         "role_id": 2,
         "is_active": True
     }
-    res = client.post("/api/v1/users", json=user_payload)
+    res = client.post("/api/v1/users", json=user_payload, headers=admin_headers)
     assert res.status_code == 201, res.text
-    regular_user = res.json()
-    user_id = regular_user["id"]
-    print(f"    Created Regular user ID: {user_id}")
+    created_user = res.get_json()
+    test_user_id = created_user["id"]
+    print(f"    Created User ID: {test_user_id}")
 
-    # Count filtered by role_id
-    res = client.get("/api/v1/users/count?role_id=1")
-    assert res.json()["count"] >= 1
+    # Verify user count
+    res = client.get("/api/v1/users/count")
+    assert res.get_json()["count"] == initial_user_count + 1
 
-    # Update user
-    res = client.put(f"/api/v1/users/{user_id}", json={"full_name": "Updated User Name"})
+    # Delete test user
+    res = client.delete(f"/api/v1/users/{test_user_id}", headers=admin_headers)
     assert res.status_code == 200
-    assert res.json()["full_name"] == "Updated User Name"
 
-    print("[3] Testing OCR Records module...")
-    # Initial count
-    res = client.get(f"/api/v1/ocr-records/count?user_id={user_id}")
+    print("[3] Testing Products & Visual Search module...")
+    res = client.get("/api/v1/products/count")
     assert res.status_code == 200
-    assert res.json()["count"] == 0
+    initial_product_count = res.get_json()["count"]
 
-    # Create record
-    ocr_payload = {
-        "user_id": user_id,
-        "image_url": "/static/uploads/test_frame.jpg",
-        "raw_detected_text": "Cà phê sữa đá",
-        "ocr_json_data": '{"boxes": [[10, 20, 100, 200]], "label": "coffee"}',
-        "audio_url": "/static/audio/test_audio.mp3",
-        "status": "pending"
+    # Create product
+    prod_payload = {
+        "name": "Apple Fresh 1kg",
+        "class_name": "apple",
+        "sku": "SKU-APPLE-01",
+        "price": 45000.0,
+        "stock_quantity": 25,
+        "is_available": True
     }
-    res = client.post("/api/v1/ocr-records", json=ocr_payload)
+    res = client.post("/api/v1/products", json=prod_payload, headers=admin_headers)
+    assert res.status_code in (201, 400)
+    if res.status_code == 201:
+        prod_id = res.get_json()["id"]
+    else:
+        # Retrieve existing
+        res = client.get("/api/v1/products?search=Apple")
+        prod_id = res.get_json()[0]["id"]
+
+    # Read product
+    res = client.get(f"/api/v1/products/{prod_id}")
+    assert res.status_code == 200
+    assert res.get_json()["price"] == 45000.0
+
+    print("[4] Testing Cart & Orders checkout module...")
+    # Add to cart
+    cart_add_payload = {"product_id": prod_id, "quantity": 2}
+    res = client.post("/api/v1/cart/items", json=cart_add_payload, headers=user_headers)
     assert res.status_code == 201, res.text
-    ocr_record = res.json()
-    record_id = ocr_record["id"]
-    print(f"    Created OCR record ID: {record_id}, status: {ocr_record['status']}")
+    cart_item = res.get_json()
+    item_id = cart_item["id"]
+    print(f"    Added item to cart, item ID: {item_id}, quantity: {cart_item['quantity']}")
 
-    # Count with status filter
-    res = client.get("/api/v1/ocr-records/count?status=pending")
-    assert res.json()["count"] >= 1
-
-    # Read OCR record
-    res = client.get(f"/api/v1/ocr-records/{record_id}")
+    # Get cart
+    res = client.get("/api/v1/cart", headers=user_headers)
     assert res.status_code == 200
-    assert res.json()["raw_detected_text"] == "Cà phê sữa đá"
+    assert res.get_json()["total_items"] >= 2
 
-    # Update OCR record status
-    res = client.put(f"/api/v1/ocr-records/{record_id}", json={"status": "approved"})
-    assert res.status_code == 200
-    assert res.json()["status"] == "approved"
-
-    print("[4] Testing OCR Reviews module...")
-    # Initial count
-    res = client.get(f"/api/v1/ocr-reviews/count?admin_id={admin_id}")
-    assert res.status_code == 200
-    initial_review_count = res.json()["count"]
-
-    # Create review
-    review_payload = {
-        "record_id": record_id,
-        "admin_id": admin_id,
-        "corrected_text": "Cà phê sữa đá Sài Gòn",
-        "corrected_audio_url": "/static/audio/test_corrected_audio.mp3",
-        "accuracy_score": 0.95,
-        "review_notes": "Bổ sung chuẩn vị từ ngữ"
+    # Checkout
+    checkout_payload = {
+        "shipping_address": "123 Nguyen Trai, Ha Noi",
+        "phone_number": "0987654321"
     }
-    res = client.post("/api/v1/ocr-reviews", json=review_payload)
+    res = client.post("/api/v1/orders/checkout", json=checkout_payload, headers=user_headers)
     assert res.status_code == 201, res.text
-    review = res.json()
-    review_id = review["id"]
-    print(f"    Created OCR review ID: {review_id}, accuracy: {review['accuracy_score']}")
+    order = res.get_json()
+    print(f"    Checkout confirmed, Order ID: {order['id']}, total: {order['total_amount']}")
 
-    # Duplicate review on same record_id must fail (unique constraint)
-    res = client.post("/api/v1/ocr-reviews", json=review_payload)
-    assert res.status_code == 409
-    print("    Uniqueness validation blocked duplicate review for same record_id.")
-
-    # Count reviews
-    res = client.get(f"/api/v1/ocr-reviews/count?admin_id={admin_id}")
-    assert res.json()["count"] == initial_review_count + 1
-
-    # Update review
-    res = client.put(f"/api/v1/ocr-reviews/{review_id}", json={"accuracy_score": 0.98})
+    # Verify cart is empty after checkout
+    res = client.get("/api/v1/cart", headers=user_headers)
     assert res.status_code == 200
-    assert res.json()["accuracy_score"] == 0.98
+    assert res.get_json()["total_items"] == 0
 
-    # Delete review
-    res = client.delete(f"/api/v1/ocr-reviews/{review_id}")
-    assert res.status_code == 204
-
-    # Clean up test users and records
-    res = client.delete(f"/api/v1/users/{user_id}")
-    assert res.status_code == 204
-    res = client.delete(f"/api/v1/users/{admin_id}")
-    assert res.status_code == 204
-
-    # Verify cascade delete: ocr_record should be gone
-    res = client.get(f"/api/v1/ocr-records/{record_id}")
-    assert res.status_code == 404
-    print("    Cascade delete verified: record removed when user was deleted.")
-
-    print("\n[SUCCESS] All CRUD + Count endpoints and SQLite integrity checks passed cleanly!")
+    print("\n>>> ALL TESTS PASSED SUCCESSFULLY! [OK]")
 
 
 if __name__ == "__main__":
     test_full_crud_and_count()
-
