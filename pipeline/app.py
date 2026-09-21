@@ -4,13 +4,16 @@ import sys
 import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import AsyncGenerator
+from typing import AsyncGenerator, Optional
+import psutil
+import torch
 from dotenv import load_dotenv
 from fastapi import FastAPI, File, HTTPException, UploadFile, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel, Field
 
-# Ensure project root is in sys.path and load environment configuration
+# Ensure project root is in sys.path
 PIPELINE_DIR = Path(__file__).resolve().parent
 PROJECT_ROOT = PIPELINE_DIR.parent
 load_dotenv(PIPELINE_DIR / ".env")
@@ -18,6 +21,8 @@ load_dotenv()
 
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
+if str(PIPELINE_DIR) not in sys.path:
+    sys.path.insert(0, str(PIPELINE_DIR))
 
 try:
     from pipeline.detector import get_detector
@@ -31,12 +36,24 @@ except ImportError:
 PIPELINE_HOST = os.getenv("PIPELINE_HOST", "0.0.0.0")
 PIPELINE_PORT = int(os.getenv("PIPELINE_PORT", 3100))
 
-STATIC_DIR = PROJECT_ROOT / "server" / "static"
+DEFAULT_STATIC_DIR = PROJECT_ROOT / "server" / "static"
+STORAGE_DIR = Path(os.getenv("STORAGE_DIR", str(DEFAULT_STATIC_DIR))).resolve()
+STATIC_DIR = STORAGE_DIR
 UPLOADS_DIR = STATIC_DIR / "uploads"
 AUDIO_DIR = STATIC_DIR / "audio"
+ASSET_BASE_URL = os.getenv("ASSET_BASE_URL", "").rstrip("/")
 
-os.makedirs(UPLOADS_DIR, exist_ok=True)
-os.makedirs(AUDIO_DIR, exist_ok=True)
+UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
+AUDIO_DIR.mkdir(parents=True, exist_ok=True)
+
+
+class TTSSynthesizeRequest(BaseModel):
+    text: str = Field(..., min_length=1, description="Text string to synthesize to speech")
+
+
+class TTSSynthesizeResponse(BaseModel):
+    audio_url: str
+    status: str = "success"
 
 
 @asynccontextmanager
@@ -52,7 +69,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
 app = FastAPI(
     title="Smart Object Detector - AI Pipeline Service",
-    description="Dedicated AI Inference (YOLO11) and Audio Synthesis (Edge-TTS) Microservice",
+    description="Dedicated AI Inference (YOLO) and Audio Synthesis (3-tier Fallback TTS) Microservice",
     version="1.0.0",
     lifespan=lifespan
 )
@@ -69,32 +86,66 @@ app.mount("/static/uploads", StaticFiles(directory=str(UPLOADS_DIR)), name="uplo
 app.mount("/static/audio", StaticFiles(directory=str(AUDIO_DIR)), name="audio")
 
 
-@app.get("/health", tags=["System"])
-def health_check() -> dict:
+@app.get("/internal/health", tags=["System"])
+def internal_health() -> dict:
+    """Returns VRAM, system RAM, and device (CUDA/CPU) usage telemetry."""
+    vram_info = {"device": "cpu", "allocated_mb": 0.0, "reserved_mb": 0.0, "total_mb": 0.0}
+    device = "cpu"
+
+    if torch.cuda.is_available():
+        device = "cuda"
+        allocated = torch.cuda.memory_allocated() / (1024 ** 2)
+        reserved = torch.cuda.memory_reserved() / (1024 ** 2)
+        props = torch.cuda.get_device_properties(0)
+        total = props.total_memory / (1024 ** 2)
+        vram_info = {
+            "device": "cuda",
+            "name": props.name,
+            "allocated_mb": round(allocated, 2),
+            "reserved_mb": round(reserved, 2),
+            "total_mb": round(total, 2)
+        }
+
+    vm = psutil.virtual_memory()
+    ram_info = {
+        "total_mb": round(vm.total / (1024 ** 2), 2),
+        "available_mb": round(vm.available / (1024 ** 2), 2),
+        "used_mb": round(vm.used / (1024 ** 2), 2),
+        "percent": vm.percent
+    }
+
     return {
         "status": "healthy",
         "service": "yolo_ai_pipeline",
-        "port": PIPELINE_PORT
+        "port": PIPELINE_PORT,
+        "device": device,
+        "vram": vram_info,
+        "ram": ram_info
     }
 
 
+@app.post("/internal/v1/process", response_model=DetectionResult, tags=["Inference"])
 @app.post("/api/v1/predict", response_model=DetectionResult, tags=["Inference"])
-async def predict_endpoint(
-    image: UploadFile = File(..., description="Target image file (JPEG, PNG, WEBP)")
-) -> DetectionResult:
-    allowed_types = {"image/jpeg", "image/png", "image/webp", "image/jpg"}
-    if image.content_type not in allowed_types:
+async def process_image_endpoint(
+    image: Optional[UploadFile] = File(None, description="Target image file"),
+    file: Optional[UploadFile] = File(None, description="Target image file (alias)")
+) -> dict:
+    """Sequential pipeline: YOLO Detection -> Vietnamese Summary -> 3-tier Audio Synthesis."""
+    target_file = file or image
+    if not target_file:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Unsupported file type: {image.content_type}."
+            detail="Yêu cầu cung cấp file ảnh hợp lệ (key: 'file' hoặc 'image')."
         )
 
-    ext = Path(image.filename).suffix if image.filename else ".jpg"
+    ext = Path(target_file.filename).suffix if target_file.filename else ".jpg"
+    if not ext:
+        ext = ".jpg"
     unique_id = uuid.uuid4().hex[:12]
     raw_image_path = UPLOADS_DIR / f"raw_{unique_id}{ext}"
 
     try:
-        content = await image.read()
+        content = await target_file.read()
         with open(raw_image_path, "wb") as f:
             f.write(content)
     except Exception as e:
@@ -113,25 +164,56 @@ async def predict_endpoint(
             str(UPLOADS_DIR),
             "/static/uploads"
         )
+    except (ValueError, TypeError, IOError) as e:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Pipeline failed to process image payload: {str(e)}"
+        )
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Pipeline inference error: {str(e)}"
         )
 
-    # Synthesize audio commentary
+    # Synthesize audio commentary via 3-tier fallback engine
     audio_filename = f"speech_{unique_id}.mp3"
     audio_path = AUDIO_DIR / audio_filename
+    rel_audio_url = f"/static/audio/{audio_filename}"
     try:
         await generate_audio(detection_result.summary, str(audio_path))
-        detection_result.audio_url = f"/static/audio/{audio_filename}"
+        detection_result.audio_url = f"{ASSET_BASE_URL}{rel_audio_url}" if ASSET_BASE_URL else rel_audio_url
     except Exception:
         detection_result.audio_url = None
 
+    if ASSET_BASE_URL and detection_result.image_url.startswith("/"):
+        detection_result.image_url = f"{ASSET_BASE_URL}{detection_result.image_url}"
+
+    detection_result.annotated_image_url = detection_result.image_url
     return detection_result
+
+
+@app.post("/internal/v1/tts/synthesize", response_model=TTSSynthesizeResponse, tags=["Audio"])
+async def synthesize_tts_endpoint(payload: TTSSynthesizeRequest) -> dict:
+    """Synthesizes isolated text into an MP3 file using the 3-tier TTS fallback chain."""
+    unique_id = uuid.uuid4().hex[:12]
+    audio_filename = f"review_speech_{unique_id}.mp3"
+    audio_path = AUDIO_DIR / audio_filename
+    rel_audio_url = f"/static/audio/{audio_filename}"
+    audio_url = f"{ASSET_BASE_URL}{rel_audio_url}" if ASSET_BASE_URL else rel_audio_url
+
+    try:
+        await generate_audio(payload.text, str(audio_path))
+        return {
+            "audio_url": audio_url,
+            "status": "success"
+        }
+    except Exception as ex:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"TTS synthesis failed: {str(ex)}"
+        )
 
 
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("app:app", host=PIPELINE_HOST, port=PIPELINE_PORT, reload=True)
-

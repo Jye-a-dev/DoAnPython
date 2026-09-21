@@ -192,6 +192,7 @@ class ObjectDetector:
             objects=detected_items,
             summary=summary,
             image_url=annotated_url,
+            annotated_image_url=annotated_url,
             audio_url=None
         )
 

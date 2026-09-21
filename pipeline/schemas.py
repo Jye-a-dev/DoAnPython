@@ -25,6 +25,7 @@ class DetectionResult(BaseModel):
     objects: List[ObjectItem] = Field(default_factory=list, description="Array of detected objects")
     summary: str = Field(..., description="Natural language Vietnamese summary")
     image_url: str = Field(..., description="Accessible URL for the annotated image")
+    annotated_image_url: Optional[str] = Field(default=None, description="Accessible URL for the annotated image")
     audio_url: Optional[str] = Field(default=None, description="Accessible stream URL for the synthesized TTS speech")
 
     def __iter__(self):
