@@ -21,7 +21,8 @@ SERVER_PORT = int(os.getenv("SERVER_PORT", 3000))
 JWT_SECRET = os.getenv("JWT_SECRET", "smart-detector-secure-token-secret-2026")
 JWT_ALGORITHM = "HS256"
 
-STATIC_DIR = SERVER_DIR / "static"
+STORAGE_DIR = Path(os.getenv("STORAGE_DIR", str(SERVER_DIR / "static"))).resolve()
+STATIC_DIR = STORAGE_DIR
 UPLOADS_DIR = STATIC_DIR / "uploads"
 AUDIO_DIR = STATIC_DIR / "audio"
 UPLOADS_DIR.mkdir(parents=True, exist_ok=True)

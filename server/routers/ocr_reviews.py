@@ -69,14 +69,23 @@ class OCRReviewListCreate(Resource):
         if not record_id or not corrected_text:
             return {"detail": "Thiếu record_id hoặc corrected_text."}, 400
 
+        # Phase 1: Read & Validate Record existence
         with get_db_session() as session:
             record = session.get(OCRRecord, record_id)
             if not record:
                 return {"detail": f"Không tìm thấy OCR record ID {record_id}."}, 404
 
-            corrected_audio_url = call_pipeline_tts(corrected_text)
-            new_status = "approved" if accuracy_score >= 0.8 else "rejected"
-            record.status = new_status
+        # Phase 2: HTTP Network I/O (Executed outside any database transaction/lock)
+        corrected_audio_url = call_pipeline_tts(corrected_text)
+        new_status = "approved" if accuracy_score >= 0.8 else "rejected"
+
+        # Phase 3: Defensive Check & Atomic Write
+        with get_db_session() as session:
+            rec = session.get(OCRRecord, record_id)
+            if not rec:
+                return {"detail": f"OCR record ID {record_id} không còn tồn tại hoặc đã bị xóa."}, 404
+
+            rec.status = new_status
 
             existing_review = session.exec(select(OCRReview).where(OCRReview.record_id == record_id)).first()
             if existing_review:
@@ -176,6 +185,21 @@ class OCRReviewDetail(Resource):
     @admin_required
     def put(self, review_id: int, current_user: dict):
         data = request.json or {}
+
+        # Phase 1: Read & Validate Review existence
+        with get_db_session() as session:
+            review = session.get(OCRReview, review_id)
+            if not review:
+                return {"detail": f"Review ID {review_id} not found."}, 404
+            old_audio_url = review.corrected_audio_url
+
+        # Phase 2: HTTP Network I/O outside DB session
+        corrected_audio_url = old_audio_url
+        if "corrected_text" in data and data["corrected_text"]:
+            new_text = data["corrected_text"].strip()
+            corrected_audio_url = call_pipeline_tts(new_text) or old_audio_url
+
+        # Phase 3: Defensive Check & Atomic Write
         with get_db_session() as session:
             review = session.get(OCRReview, review_id)
             if not review:
@@ -183,9 +207,12 @@ class OCRReviewDetail(Resource):
 
             if "corrected_text" in data and data["corrected_text"]:
                 review.corrected_text = data["corrected_text"].strip()
-                review.corrected_audio_url = call_pipeline_tts(review.corrected_text)
+                review.corrected_audio_url = corrected_audio_url
             if "accuracy_score" in data and data["accuracy_score"] is not None:
                 review.accuracy_score = float(data["accuracy_score"])
+                rec = session.get(OCRRecord, review.record_id)
+                if rec:
+                    rec.status = "approved" if review.accuracy_score >= 0.8 else "rejected"
             if "review_notes" in data and data["review_notes"] is not None:
                 review.review_notes = data["review_notes"]
 

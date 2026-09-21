@@ -45,6 +45,8 @@ CREATE TABLE IF NOT EXISTS ocr_records (
 
 CREATE INDEX IF NOT EXISTS idx_ocr_records_user_id ON ocr_records (user_id);
 CREATE INDEX IF NOT EXISTS idx_ocr_records_created_at ON ocr_records (created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_ocr_records_user_status_id ON ocr_records (user_id, status, id DESC);
+CREATE INDEX IF NOT EXISTS idx_ocr_records_status_id ON ocr_records (status, id DESC);
 
 -- 4. Bảng Reviews (Lưu Text đã sửa + Audio chuẩn sau khi sửa)
 CREATE TABLE IF NOT EXISTS ocr_reviews (
@@ -61,6 +63,7 @@ CREATE TABLE IF NOT EXISTS ocr_reviews (
 );
 
 CREATE INDEX IF NOT EXISTS idx_ocr_reviews_record_id ON ocr_reviews (record_id);
+CREATE INDEX IF NOT EXISTS idx_ocr_reviews_admin_id ON ocr_reviews (admin_id, id DESC);
 
 -- =======================================================
 -- MỞ RỘNG TÍNH NĂNG E-COMMERCE LIÊN KẾT VỚI HỆ THỐNG HIỆN CÓ

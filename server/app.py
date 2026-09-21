@@ -1,4 +1,18 @@
+import sys
 import threading
+from pathlib import Path
+from dotenv import load_dotenv
+
+SERVER_DIR = Path(__file__).resolve().parent
+PROJECT_ROOT = SERVER_DIR.parent
+load_dotenv(SERVER_DIR / ".env")
+load_dotenv()
+
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+if str(SERVER_DIR) not in sys.path:
+    sys.path.insert(0, str(SERVER_DIR))
+
 from asgiref.wsgi import WsgiToAsgi
 from flask import Flask, redirect, send_from_directory
 from flask_cors import CORS

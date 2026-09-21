@@ -16,12 +16,24 @@ from server.core.security import (
     get_current_user_from_request,
     token_required,
 )
-from server.core.pipeline_client import call_pipeline_inference, call_pipeline_tts
+from server.core.pipeline_client import (
+    PipelineExecutionError,
+    PipelineServiceError,
+    PipelineTimeoutError,
+    PipelineUnavailableError,
+    call_pipeline_inference,
+    call_pipeline_tts,
+    http_client,
+)
 from server.core.common_models import count_model, message_model
 
 __all__ = [
     "AUDIO_DIR",
     "PIPELINE_SERVICE_URL",
+    "PipelineExecutionError",
+    "PipelineServiceError",
+    "PipelineTimeoutError",
+    "PipelineUnavailableError",
     "SERVER_DIR",
     "SERVER_HOST",
     "SERVER_PORT",
@@ -35,8 +47,10 @@ __all__ = [
     "create_access_token",
     "executor",
     "get_current_user_from_request",
+    "http_client",
     "logger",
     "message_model",
     "token_required",
 ]
+
 

@@ -1,14 +1,19 @@
 import json
-import uuid
 from datetime import datetime, timezone
 
-from flask import request, send_from_directory
+from flask import Response, request, send_from_directory
 from flask_restx import Namespace, Resource, fields, reqparse
 from sqlmodel import select
 from werkzeug.datastructures import FileStorage
 
-from server.core.config import AUDIO_DIR, UPLOADS_DIR, executor
-from server.core.pipeline_client import call_pipeline_inference
+from server.core.config import AUDIO_DIR, PIPELINE_SERVICE_URL, UPLOADS_DIR
+from server.core.pipeline_client import (
+    PipelineExecutionError,
+    PipelineTimeoutError,
+    PipelineUnavailableError,
+    call_pipeline_inference,
+    http_client,
+)
 from server.database import get_db_session
 from server.models.ocr_record import OCRRecord
 from server.models.user import User
@@ -60,11 +65,13 @@ detect_parser.add_argument("user_id", location="form", type=int, default=1, help
 
 @ns_detect.route("/detect")
 class DetectEndpoint(Resource):
-    @ns_detect.doc("detect_objects", description="Upload image, verify magic bytes, dispatch to pipeline, and persist pending record")
+    @ns_detect.doc("detect_objects", description="Upload image, verify magic bytes, dispatch directly to pipeline, and persist record")
     @ns_detect.expect(detect_parser)
     @ns_detect.response(200, "Detection successful", detection_result_model)
     @ns_detect.response(400, "Invalid image format")
+    @ns_detect.response(422, "Pipeline unprocessable image entity")
     @ns_detect.response(503, "AI Pipeline unavailable")
+    @ns_detect.response(504, "AI Pipeline timeout")
     def post(self):
         uploaded_file = request.files.get("file") or request.files.get("image")
         if not uploaded_file:
@@ -83,26 +90,26 @@ class DetectEndpoint(Resource):
             return {"detail": "Nội dung file không phải là ảnh hợp lệ (JPG, PNG, WEBP)."}, 400
 
         file_bytes = uploaded_file.read()
-        uid = uuid.uuid4().hex[:12]
-        raw_filename = f"raw_{uid}.jpg"
-        raw_path = UPLOADS_DIR / raw_filename
+        filename = getattr(uploaded_file, "filename", "upload.jpg") or "upload.jpg"
 
-        with open(raw_path, "wb") as f:
-            f.write(file_bytes)
-
+        # Direct synchronous inference call with connection pooling & fine-grained timeouts
         try:
-            future = executor.submit(call_pipeline_inference, file_bytes, raw_filename)
-            pipeline_data = future.result()
-        except ConnectionError as ce:
-            return {"detail": f"Service Unavailable: {str(ce)}"}, 503
+            pipeline_data = call_pipeline_inference(file_bytes, filename)
+        except PipelineUnavailableError as pue:
+            return {"detail": f"Service Unavailable: {str(pue)}"}, 503
+        except PipelineTimeoutError as pte:
+            return {"detail": f"Gateway Timeout: {str(pte)}"}, 504
+        except PipelineExecutionError as pee:
+            return {"detail": f"Pipeline processing failed: {str(pee)}"}, 422
         except Exception as ex:
-            return {"detail": f"Pipeline processing failed: {str(ex)}"}, 500
+            return {"detail": f"Internal server error: {str(ex)}"}, 500
 
-        annotated_url = pipeline_data.get("annotated_image_url") or pipeline_data.get("image_url") or f"/static/uploads/{raw_filename}"
+        annotated_url = pipeline_data.get("annotated_image_url") or pipeline_data.get("image_url") or ""
         audio_url = pipeline_data.get("audio_url", "")
         summary = pipeline_data.get("summary", "")
         detected_objects = pipeline_data.get("objects", [])
 
+        # SQLite Lock Isolation: DB transaction occurs post-inference only
         with get_db_session() as session:
             db_user = session.get(User, user_id)
             if not db_user:
@@ -161,14 +168,43 @@ class DetectionHistory(Resource):
 
 @ns_static.route("/uploads/<path:filename>")
 class ServeUploads(Resource):
-    @ns_static.doc("serve_uploads", description="Serve raw and annotated images")
+    @ns_static.doc("serve_uploads", description="Serve raw and annotated images with pipeline fallback")
     def get(self, filename: str):
-        return send_from_directory(str(UPLOADS_DIR), filename)
+        local_path = UPLOADS_DIR / filename
+        if local_path.is_file():
+            return send_from_directory(str(UPLOADS_DIR), filename)
+
+        # Fallback upstream proxy for multi-pod deployments without shared PV
+        try:
+            upstream_url = f"{PIPELINE_SERVICE_URL}/static/uploads/{filename}"
+            resp = http_client.get(upstream_url)
+            if resp.status_code == 200:
+                content_type = resp.headers.get("content-type", "image/jpeg")
+                return Response(resp.content, content_type=content_type, status=200)
+        except Exception:
+            pass
+
+        return {"detail": f"File '{filename}' not found."}, 404
 
 
 @ns_static.route("/audio/<path:filename>")
 class ServeAudio(Resource):
-    @ns_static.doc("serve_audio", description="Stream synthesized MP3 speech files")
+    @ns_static.doc("serve_audio", description="Stream synthesized MP3 speech files with pipeline fallback")
     def get(self, filename: str):
-        return send_from_directory(str(AUDIO_DIR), filename)
+        local_path = AUDIO_DIR / filename
+        if local_path.is_file():
+            return send_from_directory(str(AUDIO_DIR), filename)
+
+        # Fallback upstream proxy for multi-pod deployments without shared PV
+        try:
+            upstream_url = f"{PIPELINE_SERVICE_URL}/static/audio/{filename}"
+            resp = http_client.get(upstream_url)
+            if resp.status_code == 200:
+                content_type = resp.headers.get("content-type", "audio/mpeg")
+                return Response(resp.content, content_type=content_type, status=200)
+        except Exception:
+            pass
+
+        return {"detail": f"Audio file '{filename}' not found."}, 404
+
 

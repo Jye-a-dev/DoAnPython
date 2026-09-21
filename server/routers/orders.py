@@ -118,24 +118,21 @@ class OrderCheckout(Resource):
             order_status = order.status
             order_created_at = order.created_at.isoformat() if hasattr(order.created_at, "isoformat") else str(order.created_at)
 
-        # Background TTS audio synthesis without blocking WSGI thread
-        def synthesize_confirmation_audio(o_id: int, val: float) -> str:
-            msg = f"Đơn hàng mã số {o_id} trị giá {int(val):,} đồng đã được xác nhận thành công. Cảm ơn bạn!"
-            return call_pipeline_tts(msg)
+        # Asynchronous non-blocking TTS audio synthesis in background (fire-and-forget)
+        def background_order_audio(o_id: int, val: float) -> None:
+            try:
+                msg = f"Đơn hàng mã số {o_id} trị giá {int(val):,} đồng đã được xác nhận thành công. Cảm ơn bạn!"
+                audio_url = call_pipeline_tts(msg)
+                if audio_url:
+                    with get_db_session() as s2:
+                        o_db = s2.get(Order, o_id)
+                        if o_db:
+                            o_db.audio_confirmation_url = audio_url
+                            s2.commit()
+            except Exception as ex:
+                logger.warning(f"Async audio confirmation failed for order {o_id}: {str(ex)}")
 
-        try:
-            future = executor.submit(synthesize_confirmation_audio, order_id, total_val)
-            audio_url = future.result(timeout=4.0)
-        except Exception as ex:
-            logger.warning(f"Audio confirmation generation timed out or failed: {str(ex)}")
-            audio_url = ""
-
-        if audio_url:
-            with get_db_session() as s2:
-                o_db = s2.get(Order, order_id)
-                if o_db:
-                    o_db.audio_confirmation_url = audio_url
-                    s2.commit()
+        executor.submit(background_order_audio, order_id, total_val)
 
         return {
             "id": order_id,
@@ -144,7 +141,7 @@ class OrderCheckout(Resource):
             "shipping_address": order_address,
             "phone_number": order_phone,
             "status": order_status,
-            "audio_confirmation_url": audio_url,
+            "audio_confirmation_url": None,
             "created_at": order_created_at,
             "items": order_items_read
         }, 201
