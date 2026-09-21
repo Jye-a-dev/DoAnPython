@@ -7,7 +7,7 @@ from server.models.ocr_review import OCRReview, OCRReviewCreate, OCRReviewUpdate
 class CRUDOCRReview(CRUDBase[OCRReview, OCRReviewCreate, OCRReviewUpdate]):
     """OCR human review repository operations."""
 
-    def get_by_record_id(self, session: Session, record_id: int) -> Optional[OCRReview]:
+    def get_by_record_id(self, session: Session, record_id: str) -> Optional[OCRReview]:
         """Fetch unique review entry linked to a specific OCR record."""
         statement = select(OCRReview).where(OCRReview.record_id == record_id)
         return session.exec(statement).first()
@@ -17,8 +17,8 @@ class CRUDOCRReview(CRUDBase[OCRReview, OCRReviewCreate, OCRReviewUpdate]):
         session: Session,
         skip: int = 0,
         limit: int = 100,
-        admin_id: Optional[int] = None,
-        record_id: Optional[int] = None
+        admin_id: Optional[str] = None,
+        record_id: Optional[str] = None
     ) -> List[OCRReview]:
         """Retrieve paginated reviews ordered by review timestamp descending."""
         statement = select(OCRReview).order_by(col(OCRReview.reviewed_at).desc())
@@ -32,7 +32,7 @@ class CRUDOCRReview(CRUDBase[OCRReview, OCRReviewCreate, OCRReviewUpdate]):
     def count_filtered(
         self,
         session: Session,
-        admin_id: Optional[int] = None
+        admin_id: Optional[str] = None
     ) -> int:
         """Calculate total number of review entries, optionally filtered by reviewer ID."""
         statement = select(func.count()).select_from(OCRReview)

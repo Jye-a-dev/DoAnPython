@@ -2,8 +2,10 @@ from datetime import datetime, timezone
 
 from flask import request
 from flask_restx import Namespace, Resource, fields
+from sqlalchemy import func
 from sqlmodel import select
 
+from server.core.common_models import count_model, message_model
 from server.core.config import executor, logger
 from server.core.pipeline_client import call_pipeline_tts
 from server.core.security import admin_required, token_required
@@ -13,19 +15,21 @@ from server.models.order import Order, OrderItem
 from server.models.product import Product
 
 ns_orders = Namespace("E-Commerce Orders & Checkout", path="/api/v1/orders", description="Order checkout with automated audio confirmation")
+ns_orders.add_model("CountResponse", count_model)
+ns_orders.add_model("MessageResponse", message_model)
 
 order_item_read_model = ns_orders.model("OrderItemRead", {
-    "id": fields.Integer,
-    "order_id": fields.Integer,
-    "product_id": fields.Integer,
+    "id": fields.String,
+    "order_id": fields.String,
+    "product_id": fields.String,
     "product_name": fields.String,
     "quantity": fields.Integer,
     "unit_price": fields.Float
 })
 
 order_read_model = ns_orders.model("OrderRead", {
-    "id": fields.Integer,
-    "user_id": fields.Integer,
+    "id": fields.String,
+    "user_id": fields.String,
     "total_amount": fields.Float,
     "shipping_address": fields.String,
     "phone_number": fields.String,
@@ -43,6 +47,72 @@ checkout_request_model = ns_orders.model("CheckoutRequest", {
 order_status_update_model = ns_orders.model("OrderStatusUpdateRequest", {
     "status": fields.String(required=True, description="New status: pending, paid, shipped, cancelled")
 })
+
+order_patch_model = ns_orders.model("OrderPatchRequest", {
+    "shipping_address": fields.String(description="Delivery shipping address"),
+    "phone_number": fields.String(description="Contact phone number"),
+    "status": fields.String(description="New status: pending, paid, shipped, cancelled")
+})
+
+order_stats_model = ns_orders.model("OrderStatsResponse", {
+    "total_orders": fields.Integer,
+    "total_revenue": fields.Float,
+    "pending_orders": fields.Integer,
+    "paid_orders": fields.Integer,
+    "shipped_orders": fields.Integer,
+    "cancelled_orders": fields.Integer
+})
+
+
+@ns_orders.route("/count")
+class OrderCount(Resource):
+    @ns_orders.doc("count_orders", security="Bearer", description="Count orders with status and user filters")
+    @ns_orders.param("status", "Filter by order status", type=str)
+    @ns_orders.param("user_id", "Filter by user ID", type=str)
+    @ns_orders.response(200, "Success", count_model)
+    @token_required
+    def get(self, current_user: dict):
+        status_filter = request.args.get("status")
+        user_id = request.args.get("user_id")
+        with get_db_session() as session:
+            stmt = select(func.count(Order.id))
+            if current_user["role_id"] != 1:
+                stmt = stmt.where(Order.user_id == current_user["id"])
+            elif user_id:
+                stmt = stmt.where(Order.user_id == user_id)
+            if status_filter:
+                stmt = stmt.where(Order.status == status_filter.lower())
+            count = session.exec(stmt).one()
+            return {"count": count}, 200
+
+
+@ns_orders.route("/stats")
+class OrderStats(Resource):
+    @ns_orders.doc("get_order_stats", security="Bearer", description="Aggregate order and revenue statistics")
+    @ns_orders.response(200, "Success", order_stats_model)
+    @token_required
+    def get(self, current_user: dict):
+        with get_db_session() as session:
+            stmt = select(Order)
+            if current_user["role_id"] != 1:
+                stmt = stmt.where(Order.user_id == current_user["id"])
+            orders = session.exec(stmt).all()
+
+            total = len(orders)
+            revenue = sum(o.total_amount for o in orders if o.status in ("paid", "shipped"))
+            pending = sum(1 for o in orders if o.status == "pending")
+            paid = sum(1 for o in orders if o.status == "paid")
+            shipped = sum(1 for o in orders if o.status == "shipped")
+            cancelled = sum(1 for o in orders if o.status == "cancelled")
+
+            return {
+                "total_orders": total,
+                "total_revenue": round(revenue, 2),
+                "pending_orders": pending,
+                "paid_orders": paid,
+                "shipped_orders": shipped,
+                "cancelled_orders": cancelled
+            }, 200
 
 
 @ns_orders.route("/checkout")
@@ -101,7 +171,7 @@ class OrderCheckout(Resource):
                 session.delete(cart_item)
 
                 order_items_read.append({
-                    "id": order_item.id or 0,
+                    "id": order_item.id,
                     "order_id": order.id,
                     "product_id": product.id,
                     "product_name": product.name,
@@ -119,9 +189,10 @@ class OrderCheckout(Resource):
             order_created_at = order.created_at.isoformat() if hasattr(order.created_at, "isoformat") else str(order.created_at)
 
         # Asynchronous non-blocking TTS audio synthesis in background (fire-and-forget)
-        def background_order_audio(o_id: int, val: float) -> None:
+        def background_order_audio(o_id: str, val: float) -> None:
             try:
-                msg = f"Đơn hàng mã số {o_id} trị giá {int(val):,} đồng đã được xác nhận thành công. Cảm ơn bạn!"
+                short_order_code = str(o_id)[:8].upper()
+                msg = f"Đơn hàng mã số {short_order_code} trị giá {int(val):,} đồng đã được xác nhận thành công. Cảm ơn bạn!"
                 audio_url = call_pipeline_tts(msg)
                 if audio_url:
                     with get_db_session() as s2:
@@ -189,14 +260,14 @@ class OrderListResource(Resource):
             return output, 200
 
 
-@ns_orders.route("/<int:order_id>")
+@ns_orders.route("/<string:order_id>")
 class OrderDetailResource(Resource):
     @ns_orders.doc("get_order", security="Bearer", description="Get order details by ID")
     @ns_orders.response(200, "Success", order_read_model)
     @ns_orders.response(403, "Forbidden")
     @ns_orders.response(404, "Order not found")
     @token_required
-    def get(self, order_id: int, current_user: dict):
+    def get(self, order_id: str, current_user: dict):
         with get_db_session() as session:
             order = session.get(Order, order_id)
             if not order:
@@ -230,8 +301,82 @@ class OrderDetailResource(Resource):
                 "items": items_list
             }, 200
 
+    @ns_orders.doc("patch_order", security="Bearer", description="Partially update order delivery info or status")
+    @ns_orders.expect(order_patch_model, validate=False)
+    @ns_orders.response(200, "Order updated", order_read_model)
+    @ns_orders.response(403, "Forbidden")
+    @ns_orders.response(404, "Order not found")
+    @token_required
+    def patch(self, order_id: str, current_user: dict):
+        data = request.json or {}
+        with get_db_session() as session:
+            order = session.get(Order, order_id)
+            if not order:
+                return {"detail": f"Order ID {order_id} not found."}, 404
+            if current_user["role_id"] != 1 and order.user_id != current_user["id"]:
+                return {"detail": "Bạn không có quyền cập nhật đơn hàng này."}, 403
 
-@ns_orders.route("/<int:order_id>/status")
+            if "shipping_address" in data and data["shipping_address"]:
+                order.shipping_address = data["shipping_address"].strip()
+            if "phone_number" in data and data["phone_number"]:
+                order.phone_number = data["phone_number"].strip()
+            if "status" in data and data["status"]:
+                new_st = data["status"].strip().lower()
+                if current_user["role_id"] == 1:
+                    order.status = new_st
+                elif order.status == "pending" and new_st == "cancelled":
+                    order.status = "cancelled"
+                else:
+                    return {"detail": "Người dùng chỉ có thể hủy đơn hàng đang ở trạng thái 'pending'."}, 403
+
+            session.commit()
+            session.refresh(order)
+
+            items_query = select(OrderItem, Product).join(Product, OrderItem.product_id == Product.id).where(OrderItem.order_id == order.id)
+            item_rows = session.exec(items_query).all()
+            items_list = [
+                {
+                    "id": oi.id,
+                    "order_id": oi.order_id,
+                    "product_id": oi.product_id,
+                    "product_name": prod.name,
+                    "quantity": oi.quantity,
+                    "unit_price": oi.unit_price
+                }
+                for oi, prod in item_rows
+            ]
+
+            return {
+                "id": order.id,
+                "user_id": order.user_id,
+                "total_amount": order.total_amount,
+                "shipping_address": order.shipping_address,
+                "phone_number": order.phone_number,
+                "status": order.status,
+                "audio_confirmation_url": order.audio_confirmation_url or "",
+                "created_at": order.created_at.isoformat() if hasattr(order.created_at, "isoformat") else str(order.created_at),
+                "items": items_list
+            }, 200
+
+    @ns_orders.doc("delete_order", security="Bearer", description="Cancel and remove order")
+    @ns_orders.response(200, "Order deleted", message_model)
+    @ns_orders.response(403, "Forbidden")
+    @ns_orders.response(404, "Order not found")
+    @token_required
+    def delete(self, order_id: str, current_user: dict):
+        with get_db_session() as session:
+            order = session.get(Order, order_id)
+            if not order:
+                return {"detail": f"Order ID {order_id} not found."}, 404
+            if current_user["role_id"] != 1 and order.user_id != current_user["id"]:
+                return {"detail": "Bạn không có quyền xóa đơn hàng này."}, 403
+
+            session.delete(order)
+            session.commit()
+            return {"message": f"Order ID {order_id} đã được xóa thành công.", "success": True}, 200
+
+
+@ns_orders.route("/<string:order_id>/status")
 class OrderStatusResource(Resource):
     @ns_orders.doc("update_order_status", security="Bearer", description="Update order lifecycle status")
     @ns_orders.expect(order_status_update_model, validate=True)
@@ -239,7 +384,19 @@ class OrderStatusResource(Resource):
     @ns_orders.response(400, "Invalid status")
     @ns_orders.response(404, "Order not found")
     @admin_required
-    def put(self, order_id: int, current_user: dict):
+    def put(self, order_id: str, current_user: dict):
+        return self._update_status(order_id)
+
+    @ns_orders.doc("patch_order_status", security="Bearer", description="Partially update order lifecycle status")
+    @ns_orders.expect(order_status_update_model, validate=True)
+    @ns_orders.response(200, "Status updated", order_read_model)
+    @ns_orders.response(400, "Invalid status")
+    @ns_orders.response(404, "Order not found")
+    @admin_required
+    def patch(self, order_id: str, current_user: dict):
+        return self._update_status(order_id)
+
+    def _update_status(self, order_id: str):
         data = request.json or {}
         new_status = data.get("status", "").strip().lower()
         allowed_statuses = {"pending", "paid", "shipped", "cancelled"}

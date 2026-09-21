@@ -1,3 +1,4 @@
+import uuid
 from datetime import datetime, timezone
 from typing import Optional
 from sqlmodel import Field, SQLModel
@@ -5,7 +6,7 @@ from server.models.common import DateTimeCoerceModel
 
 
 class ProductBase(SQLModel):
-    category_id: Optional[int] = Field(default=None, foreign_key="categories.id", description="Category identifier")
+    category_id: Optional[str] = Field(default=None, foreign_key="categories.id", description="Category identifier")
     name: str = Field(max_length=150, nullable=False, description="Product title")
     class_name: Optional[str] = Field(default=None, max_length=50, index=True, description="COCO/YOLO classification tag (lowercase)")
     sku: Optional[str] = Field(default=None, max_length=50, unique=True, index=True, description="Stock Keeping Unit")
@@ -19,7 +20,7 @@ class ProductBase(SQLModel):
 class Product(ProductBase, table=True):
     __tablename__ = "products"
 
-    id: Optional[int] = Field(default=None, primary_key=True)
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()), primary_key=True)
     created_at: datetime = Field(
         default_factory=lambda: datetime.now(timezone.utc),
         nullable=False
@@ -31,7 +32,7 @@ class ProductCreate(ProductBase):
 
 
 class ProductUpdate(SQLModel):
-    category_id: Optional[int] = None
+    category_id: Optional[str] = None
     name: Optional[str] = None
     class_name: Optional[str] = None
     sku: Optional[str] = None
@@ -43,6 +44,5 @@ class ProductUpdate(SQLModel):
 
 
 class ProductRead(ProductBase, DateTimeCoerceModel):
-    id: int
+    id: str
     created_at: datetime
-

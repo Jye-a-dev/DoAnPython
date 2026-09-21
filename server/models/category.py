@@ -1,3 +1,4 @@
+import uuid
 from typing import Optional
 from sqlmodel import Field, SQLModel
 from server.models.common import DateTimeCoerceModel
@@ -12,7 +13,7 @@ class CategoryBase(SQLModel):
 class Category(CategoryBase, table=True):
     __tablename__ = "categories"
 
-    id: Optional[int] = Field(default=None, primary_key=True)
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()), primary_key=True)
 
 
 class CategoryCreate(CategoryBase):
@@ -20,5 +21,4 @@ class CategoryCreate(CategoryBase):
 
 
 class CategoryRead(CategoryBase, DateTimeCoerceModel):
-    id: int
-
+    id: str

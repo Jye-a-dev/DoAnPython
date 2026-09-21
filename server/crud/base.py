@@ -33,12 +33,16 @@ class CRUDBase(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
     def create(self, session: Session, obj_in: CreateSchemaType) -> ModelType:
         """
         Persist a new record to the database.
-        Explicitly removes or defaults 'id' to None so SQLite autoincrement governs PK assignment.
+        Maintains string UUID v4 or allows model default_factory to populate it.
         """
-        obj_data = obj_in.model_dump()
-        obj_data.pop("id", None)
+        import uuid
+        obj_data = obj_in.model_dump() if hasattr(obj_in, "model_dump") else dict(obj_in)
+        if obj_data.get("id") is None:
+            obj_data.pop("id", None)
         db_obj = self.model(**obj_data)
-        setattr(db_obj, "id", None)
+
+        if getattr(db_obj, "id", None) is None and getattr(self.model, "__tablename__", "") != "roles":
+            setattr(db_obj, "id", str(uuid.uuid4()))
 
         session.add(db_obj)
         session.commit()

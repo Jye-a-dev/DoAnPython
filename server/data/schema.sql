@@ -1,7 +1,8 @@
+PRAGMA page_size = 16384;
 PRAGMA foreign_keys = ON;
 PRAGMA journal_mode = WAL;
 
--- 1. Bảng Roles
+-- 1. Bảng Roles (Giữ nguyên INTEGER autoincrement: 1=admin, 2=user)
 CREATE TABLE IF NOT EXISTS roles (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name VARCHAR(20) NOT NULL UNIQUE,
@@ -12,9 +13,9 @@ INSERT OR IGNORE INTO roles (id, name, description) VALUES
 (1, 'admin', 'Quản trị viên: thẩm định, chỉnh sửa và đánh giá độ chính xác'),
 (2, 'user', 'Người dùng: sử dụng camera OCR thời gian thực');
 
--- 2. Bảng Users (Google Login)
+-- 2. Bảng Users (UUID v4 Primary Key)
 CREATE TABLE IF NOT EXISTS users (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    id VARCHAR(36) PRIMARY KEY NOT NULL,
     google_id VARCHAR(100) UNIQUE,
     email VARCHAR(100) NOT NULL UNIQUE,
     full_name VARCHAR(100),
@@ -28,17 +29,29 @@ CREATE TABLE IF NOT EXISTS users (
 CREATE INDEX IF NOT EXISTS idx_users_email ON users (email);
 
 INSERT OR IGNORE INTO users (id, google_id, email, full_name, role_id, is_active) VALUES
-(1, 'system_default', 'user@system.local', 'Default User', 2, 1);
+('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'admin_default', 'admin@system.local', 'Default Admin', 1, 1);
 
--- 3. Bảng OCR Records (Lưu Text gốc + Audio gốc từ Camera/Frame)
+-- 3. Bảng OCR Records (UUID v4 & SQLite BLOB)
 CREATE TABLE IF NOT EXISTS ocr_records (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id INTEGER NOT NULL,
+    id VARCHAR(36) PRIMARY KEY NOT NULL,
+    user_id VARCHAR(36) NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
-    image_url TEXT NOT NULL,
+    
+    -- Ảnh chụp gốc từ Camera
+    raw_image_data BLOB NOT NULL,
+    raw_image_mime VARCHAR(30) DEFAULT 'image/jpeg' NOT NULL,
+    
+    -- Ảnh sau khi AI vẽ Bounding Box
+    annotated_image_data BLOB,
+    annotated_image_mime VARCHAR(30) DEFAULT 'image/jpeg',
+    
     raw_detected_text TEXT NOT NULL,
     ocr_json_data TEXT NOT NULL,
-    audio_url TEXT NOT NULL,
+    
+    -- Dữ liệu Audio MP3 nhị phân
+    audio_data BLOB NOT NULL,
+    audio_mime VARCHAR(30) DEFAULT 'audio/mpeg' NOT NULL,
+    
     status VARCHAR(20) DEFAULT 'pending' NOT NULL,
     FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
 );
@@ -47,14 +60,19 @@ CREATE INDEX IF NOT EXISTS idx_ocr_records_user_id ON ocr_records (user_id);
 CREATE INDEX IF NOT EXISTS idx_ocr_records_created_at ON ocr_records (created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_ocr_records_user_status_id ON ocr_records (user_id, status, id DESC);
 CREATE INDEX IF NOT EXISTS idx_ocr_records_status_id ON ocr_records (status, id DESC);
+CREATE INDEX IF NOT EXISTS idx_ocr_records_user_status_created ON ocr_records (user_id, status, created_at DESC);
 
--- 4. Bảng Reviews (Lưu Text đã sửa + Audio chuẩn sau khi sửa)
+-- 4. Bảng OCR Reviews (UUID v4 & SQLite Audio BLOB)
 CREATE TABLE IF NOT EXISTS ocr_reviews (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    record_id INTEGER NOT NULL UNIQUE,
-    admin_id INTEGER NOT NULL,
+    id VARCHAR(36) PRIMARY KEY NOT NULL,
+    record_id VARCHAR(36) NOT NULL UNIQUE,
+    admin_id VARCHAR(36) NOT NULL,
     corrected_text TEXT NOT NULL,
-    corrected_audio_url TEXT NOT NULL,
+    
+    -- File audio phát âm lại sau khi Admin sửa nội dung
+    corrected_audio_data BLOB NOT NULL,
+    corrected_audio_mime VARCHAR(30) DEFAULT 'audio/mpeg' NOT NULL,
+    
     accuracy_score REAL NOT NULL,
     review_notes TEXT,
     reviewed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
@@ -66,26 +84,21 @@ CREATE INDEX IF NOT EXISTS idx_ocr_reviews_record_id ON ocr_reviews (record_id);
 CREATE INDEX IF NOT EXISTS idx_ocr_reviews_admin_id ON ocr_reviews (admin_id, id DESC);
 
 -- =======================================================
--- MỞ RỘNG TÍNH NĂNG E-COMMERCE LIÊN KẾT VỚI HỆ THỐNG HIỆN CÓ
+-- MỞ RỘNG TÍNH NĂNG E-COMMERCE (UUID v4)
 -- =======================================================
 
--- 5. Bảng Danh mục sản phẩm (Categories)
+-- 5. Bảng Danh mục sản phẩm (Categories - UUID v4)
 CREATE TABLE IF NOT EXISTS categories (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    id VARCHAR(36) PRIMARY KEY NOT NULL,
     name VARCHAR(100) NOT NULL UNIQUE,
     slug VARCHAR(100) NOT NULL UNIQUE,
     description TEXT
 );
 
-INSERT OR IGNORE INTO categories (id, name, slug, description) VALUES
-(1, 'Thiết bị điện tử', 'thiet-bi-dien-tu', 'Laptop, điện thoại và phụ kiện số'),
-(2, 'Đồ uống & Thực phẩm', 'do-uong-thuc-pham', 'Nước uống, đồ ăn nhanh và hoa quả');
-
--- 6. Bảng Sản phẩm (Products)
--- class_name: Khớp trực tiếp với label nhận diện từ YOLO / OCR (chữ thường, vd: 'laptop', 'bottle', 'apple'...)
+-- 6. Bảng Sản phẩm (Products - UUID v4)
 CREATE TABLE IF NOT EXISTS products (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    category_id INTEGER,
+    id VARCHAR(36) PRIMARY KEY NOT NULL,
+    category_id VARCHAR(36),
     name VARCHAR(150) NOT NULL,
     class_name VARCHAR(50),
     sku VARCHAR(50) UNIQUE,
@@ -101,18 +114,12 @@ CREATE TABLE IF NOT EXISTS products (
 CREATE INDEX IF NOT EXISTS idx_products_class_name ON products (class_name);
 CREATE INDEX IF NOT EXISTS idx_products_sku ON products (sku);
 
-INSERT OR IGNORE INTO products (id, category_id, name, class_name, sku, price, stock_quantity, image_url, description, is_available) VALUES
-(1, 1, 'Laptop Dell Inspiron 15', 'laptop', 'LAP-DELL-15', 18500000.0, 15, '/static/uploads/dell_15.jpg', 'Laptop văn phòng cấu hình cao', 1),
-(2, 2, 'Chai nước khoáng Lavie 500ml', 'bottle', 'BOT-LAV-500', 10000.0, 100, '/static/uploads/lavie_500.jpg', 'Nước khoáng thiên nhiên đóng chai', 1),
-(3, 2, 'Táo Envy New Zealand', 'apple', 'FRUIT-APP-01', 35000.0, 50, '/static/uploads/apple_envy.jpg', 'Táo giòn ngọt nhập khẩu', 1);
-
--- 7. Bảng Giỏ hàng (Cart Items)
--- record_id: INTEGER NULL đáp ứng quy tắc ON DELETE SET NULL khi bản ghi quét camera bị xóa
+-- 7. Bảng Giỏ hàng (Cart Items - UUID v4)
 CREATE TABLE IF NOT EXISTS cart_items (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id INTEGER NOT NULL,
-    product_id INTEGER NOT NULL,
-    record_id INTEGER,
+    id VARCHAR(36) PRIMARY KEY NOT NULL,
+    user_id VARCHAR(36) NOT NULL,
+    product_id VARCHAR(36) NOT NULL,
+    record_id VARCHAR(36),
     quantity INTEGER DEFAULT 1 NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
     FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
@@ -123,10 +130,10 @@ CREATE TABLE IF NOT EXISTS cart_items (
 
 CREATE INDEX IF NOT EXISTS idx_cart_items_user_id ON cart_items (user_id);
 
--- 8. Bảng Đơn hàng (Orders)
+-- 8. Bảng Đơn hàng (Orders - UUID v4)
 CREATE TABLE IF NOT EXISTS orders (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id INTEGER NOT NULL,
+    id VARCHAR(36) PRIMARY KEY NOT NULL,
+    user_id VARCHAR(36) NOT NULL,
     total_amount REAL NOT NULL,
     shipping_address TEXT NOT NULL,
     phone_number VARCHAR(20) NOT NULL,
@@ -139,11 +146,11 @@ CREATE TABLE IF NOT EXISTS orders (
 CREATE INDEX IF NOT EXISTS idx_orders_user_id ON orders (user_id);
 CREATE INDEX IF NOT EXISTS idx_orders_status ON orders (status);
 
--- 9. Bảng Chi tiết đơn hàng (Order Items)
+-- 9. Bảng Chi tiết đơn hàng (Order Items - UUID v4)
 CREATE TABLE IF NOT EXISTS order_items (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    order_id INTEGER NOT NULL,
-    product_id INTEGER NOT NULL,
+    id VARCHAR(36) PRIMARY KEY NOT NULL,
+    order_id VARCHAR(36) NOT NULL,
+    product_id VARCHAR(36) NOT NULL,
     quantity INTEGER NOT NULL,
     unit_price REAL NOT NULL,
     FOREIGN KEY (order_id) REFERENCES orders (id) ON DELETE CASCADE,

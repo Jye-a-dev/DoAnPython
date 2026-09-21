@@ -1,19 +1,26 @@
 from datetime import datetime, timezone
 
 import jwt
-from flask import request
+from flask import jsonify, make_response, request
 from flask_restx import Namespace, Resource, fields
 from sqlalchemy import func
 from sqlmodel import select
 
-from server.core.security import create_access_token, token_required
+from server.core.common_models import message_model
+from server.core.security import (
+    clear_active_session_user,
+    create_access_token,
+    set_active_session_user,
+    token_required,
+)
 from server.database import get_db_session
 from server.models.user import User
 
-ns_auth = Namespace("Authentication & User Session", path="/api/v1/auth", description="Google Login and user profiles")
+ns_auth = Namespace("Authentication & User Session", path="/api/v1/auth", description="Google Login, passwordless dev login, and user profile sessions")
+ns_auth.add_model("MessageResponse", message_model)
 
 user_model = ns_auth.model("UserProfile", {
-    "id": fields.Integer(description="User ID"),
+    "id": fields.String(description="User ID"),
     "email": fields.String(description="Email address"),
     "full_name": fields.String(description="Display name"),
     "role_id": fields.Integer(description="Role ID (1=admin, 2=user)"),
@@ -22,8 +29,19 @@ user_model = ns_auth.model("UserProfile", {
     "created_at": fields.String(description="Creation ISO timestamp")
 })
 
+user_profile_patch_model = ns_auth.model("UserProfilePatchRequest", {
+    "full_name": fields.String(description="New display name"),
+    "avatar_url": fields.String(description="New avatar URL")
+})
+
 google_auth_model = ns_auth.model("GoogleAuthPayload", {
     "id_token": fields.String(required=True, description="Google OAuth ID Token")
+})
+
+login_payload_model = ns_auth.model("DirectLoginPayload", {
+    "email": fields.String(required=True, default="admin@system.local", description="User email address"),
+    "full_name": fields.String(required=False, description="Display name for new accounts"),
+    "role_id": fields.Integer(required=False, default=1, description="Role ID: 1 for admin, 2 for user")
 })
 
 auth_response_model = ns_auth.model("AuthResponse", {
@@ -32,10 +50,47 @@ auth_response_model = ns_auth.model("AuthResponse", {
     "user": fields.Nested(user_model)
 })
 
+dev_token_model = ns_auth.model("DevTokenPayload", {
+    "email": fields.String(required=False, default="admin@system.local", description="Email of user to issue JWT for"),
+    "role_id": fields.Integer(required=False, default=1, description="Role ID: 1 for admin, 2 for user")
+})
+
+
+def build_auth_response(user: User, token: str):
+    """Construct unified JSON auth payload and attach persistent browser cookie."""
+    user_dict = {
+        "id": str(user.id),
+        "email": user.email,
+        "full_name": user.full_name,
+        "role_id": user.role_id,
+        "avatar_url": user.avatar_url,
+        "is_active": user.is_active,
+        "created_at": user.created_at.isoformat() if hasattr(user.created_at, "isoformat") else str(user.created_at)
+    }
+    # Persist in server memory so unauthenticated requests fall back to this session
+    set_active_session_user(user_dict)
+
+    resp_data = {
+        "access_token": token,
+        "token_type": "Bearer",
+        "user": user_dict
+    }
+    resp = make_response(jsonify(resp_data), 200)
+    # Set cookie for automatic cross-route authentication in Swagger UI and browsers
+    resp.set_cookie(
+        "access_token",
+        token,
+        max_age=7 * 86400,
+        path="/",
+        samesite="Lax",
+        httponly=False
+    )
+    return resp
+
 
 @ns_auth.route("/google")
 class GoogleAuth(Resource):
-    @ns_auth.doc("google_login", description="Authenticate with Google ID token, upsert user, and return JWT")
+    @ns_auth.doc("google_login", description="Authenticate with Google ID token, upsert user, return JWT and set cookie")
     @ns_auth.expect(google_auth_model, validate=True)
     @ns_auth.response(200, "Authentication successful", auth_response_model)
     @ns_auth.response(400, "Invalid token or missing email")
@@ -91,29 +146,119 @@ class GoogleAuth(Resource):
 
             session.commit()
             session.refresh(user)
+            token = create_access_token(str(user.id), user.email, user.role_id)
+            return build_auth_response(user, token)
 
-            token = create_access_token(user.id, user.email, user.role_id)
-            return {
-                "access_token": token,
-                "token_type": "Bearer",
-                "user": {
-                    "id": user.id,
-                    "email": user.email,
-                    "full_name": user.full_name,
-                    "role_id": user.role_id,
-                    "avatar_url": user.avatar_url,
-                    "is_active": user.is_active,
-                    "created_at": user.created_at.isoformat() if hasattr(user.created_at, "isoformat") else str(user.created_at)
-                }
-            }, 200
+
+@ns_auth.route("/login")
+class DirectLoginAuth(Resource):
+    @ns_auth.doc("direct_login", description="Log in directly by email, auto-create account if missing, save session cookie")
+    @ns_auth.expect(login_payload_model, validate=True)
+    @ns_auth.response(200, "Login successful", auth_response_model)
+    def post(self):
+        data = request.json or {}
+        email = (data.get("email") or "admin@system.local").strip().lower()
+        role_id = int(data.get("role_id", 1))
+        full_name = (data.get("full_name") or email.split("@")[0]).strip()
+
+        with get_db_session() as session:
+            statement = select(User).where(User.email == email)
+            user = session.exec(statement).first()
+
+            if not user:
+                user = User(
+                    email=email,
+                    full_name=full_name,
+                    role_id=role_id,
+                    is_active=True,
+                    created_at=datetime.now(timezone.utc)
+                )
+                session.add(user)
+                session.commit()
+                session.refresh(user)
+
+            token = create_access_token(str(user.id), user.email, user.role_id)
+            return build_auth_response(user, token)
+
+
+@ns_auth.route("/dev-token")
+class DevTokenAuth(Resource):
+    @ns_auth.doc("dev_token", description="Issue development/admin JWT token and set browser session cookie")
+    @ns_auth.expect(dev_token_model)
+    @ns_auth.response(200, "Token generated", auth_response_model)
+    def post(self):
+        data = request.json or {}
+        email = (data.get("email") or "admin@system.local").strip().lower()
+        role_id = int(data.get("role_id", 1))
+
+        with get_db_session() as session:
+            statement = select(User).where(User.email == email)
+            user = session.exec(statement).first()
+
+            if not user:
+                user = User(
+                    email=email,
+                    full_name=email.split("@")[0],
+                    role_id=role_id,
+                    is_active=True,
+                    created_at=datetime.now(timezone.utc)
+                )
+                session.add(user)
+                session.commit()
+                session.refresh(user)
+
+            token = create_access_token(str(user.id), user.email, user.role_id)
+            return build_auth_response(user, token)
+
+
+@ns_auth.route("/logout")
+class LogoutAuth(Resource):
+    @ns_auth.doc("logout", description="Clear active login session and remove browser authentication cookie")
+    @ns_auth.response(200, "Logged out", message_model)
+    def post(self):
+        clear_active_session_user()
+        resp = make_response(jsonify({"message": "Đã đăng xuất thành công.", "success": True}), 200)
+        resp.delete_cookie("access_token", path="/")
+        return resp
 
 
 @ns_auth.route("/me")
 class AuthMe(Resource):
-    @ns_auth.doc("get_me", security="Bearer", description="Get currently logged in user profile from Bearer token")
+    @ns_auth.doc("get_me", security="Bearer", description="Get currently logged in user profile from Bearer token, cookie, or session")
     @ns_auth.response(200, "Success", user_model)
     @ns_auth.response(401, "Unauthorized")
     @token_required
     def get(self, current_user: dict):
         return current_user, 200
 
+    @ns_auth.doc("patch_me", security="Bearer", description="Partially update current logged in user's profile")
+    @ns_auth.expect(user_profile_patch_model, validate=False)
+    @ns_auth.response(200, "Profile updated", user_model)
+    @ns_auth.response(401, "Unauthorized")
+    @token_required
+    def patch(self, current_user: dict):
+        data = request.json or {}
+        with get_db_session() as session:
+            user = session.get(User, current_user["id"])
+            if not user:
+                return {"detail": "User not found."}, 404
+
+            if "full_name" in data and data["full_name"] is not None:
+                user.full_name = data["full_name"].strip()
+            if "avatar_url" in data and data["avatar_url"] is not None:
+                user.avatar_url = data["avatar_url"].strip()
+
+            session.commit()
+            session.refresh(user)
+
+            updated = {
+                "id": str(user.id),
+                "email": user.email,
+                "full_name": user.full_name,
+                "role_id": user.role_id,
+                "avatar_url": user.avatar_url,
+                "is_active": user.is_active,
+                "created_at": user.created_at.isoformat() if hasattr(user.created_at, "isoformat") else str(user.created_at)
+            }
+            set_active_session_user(updated)
+            return updated, 200

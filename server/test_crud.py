@@ -15,9 +15,11 @@ from server.core.security import create_access_token
 ensure_startup_initialized()
 client = flask_app.test_client()
 
+from server.core.config import DEFAULT_ADMIN_USER_ID, DEFAULT_USER_USER_ID
+
 # Prepare auth headers
-admin_token = create_access_token(3, "admin@system.local", 1)
-user_token = create_access_token(1, "user@system.local", 2)
+admin_token = create_access_token(DEFAULT_ADMIN_USER_ID, "admin@system.local", 1)
+user_token = create_access_token(DEFAULT_USER_USER_ID, "user@system.local", 2)
 admin_headers = {"Authorization": f"Bearer {admin_token}"}
 user_headers = {"Authorization": f"Bearer {user_token}"}
 

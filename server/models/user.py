@@ -1,3 +1,4 @@
+import uuid
 from datetime import datetime, timezone
 from typing import Optional
 from sqlmodel import Field, SQLModel
@@ -18,7 +19,7 @@ class User(UserBase, table=True):
     """Database table mapping for 'users' table defined in schema.sql."""
     __tablename__ = "users"
 
-    id: Optional[int] = Field(default=None, primary_key=True)
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()), primary_key=True)
     created_at: datetime = Field(
         default_factory=lambda: datetime.now(timezone.utc),
         nullable=False
@@ -42,6 +43,5 @@ class UserUpdate(SQLModel):
 
 class UserRead(UserBase, DateTimeCoerceModel):
     """Response schema representing a persisted user record."""
-    id: int
+    id: str
     created_at: datetime
-

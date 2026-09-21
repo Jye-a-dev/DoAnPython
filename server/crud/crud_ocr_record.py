@@ -12,7 +12,7 @@ class CRUDOCRRecord(CRUDBase[OCRRecord, OCRRecordCreate, OCRRecordUpdate]):
         session: Session,
         skip: int = 0,
         limit: int = 100,
-        user_id: Optional[int] = None,
+        user_id: Optional[str] = None,
         status: Optional[str] = None
     ) -> List[OCRRecord]:
         """Retrieve paginated detection records ordered chronologically descending."""
@@ -27,7 +27,7 @@ class CRUDOCRRecord(CRUDBase[OCRRecord, OCRRecordCreate, OCRRecordUpdate]):
     def count_filtered(
         self,
         session: Session,
-        user_id: Optional[int] = None,
+        user_id: Optional[str] = None,
         status: Optional[str] = None
     ) -> int:
         """Calculate total number of records matching filter conditions."""

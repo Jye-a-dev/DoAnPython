@@ -216,4 +216,6 @@ async def synthesize_tts_endpoint(payload: TTSSynthesizeRequest) -> dict:
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("app:app", host=PIPELINE_HOST, port=PIPELINE_PORT, reload=True)
+    # Target module dynamically to support execution from repository root or subfolder
+    app_import = "pipeline.app:app" if Path.cwd() == PROJECT_ROOT else "app:app"
+    uvicorn.run(app_import, host=PIPELINE_HOST, port=PIPELINE_PORT, reload=True, reload_dirs=[str(PIPELINE_DIR)])

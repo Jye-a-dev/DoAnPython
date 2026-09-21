@@ -66,3 +66,38 @@ def call_pipeline_tts(text_content: str) -> str:
         return ""
 
 
+def fetch_media_bytes(url_or_rel_path: str) -> bytes:
+    """Read media bytes from local static storage folder or fallback to pipeline HTTP endpoint."""
+    if not url_or_rel_path:
+        return b""
+
+    from server.core.config import AUDIO_DIR, UPLOADS_DIR
+
+    rel = url_or_rel_path.lstrip("/")
+    if rel.startswith("static/uploads/"):
+        filename = rel.replace("static/uploads/", "")
+        local_p = UPLOADS_DIR / filename
+        if local_p.is_file():
+            try:
+                return local_p.read_bytes()
+            except Exception:
+                pass
+    elif rel.startswith("static/audio/"):
+        filename = rel.replace("static/audio/", "")
+        local_p = AUDIO_DIR / filename
+        if local_p.is_file():
+            try:
+                return local_p.read_bytes()
+            except Exception:
+                pass
+
+    full_url = url_or_rel_path if url_or_rel_path.startswith("http") else f"{PIPELINE_SERVICE_URL}/{rel}"
+    try:
+        r = http_client.get(full_url)
+        if r.status_code == 200:
+            return r.content
+    except Exception:
+        pass
+    return b""
+
+

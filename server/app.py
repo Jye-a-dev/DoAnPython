@@ -1,3 +1,4 @@
+import os
 import sys
 import threading
 from pathlib import Path
@@ -20,24 +21,26 @@ from flask_restx import Api
 
 from server.core.config import (
     AUDIO_DIR,
+    DEBUG,
     SERVER_HOST,
     SERVER_PORT,
     UPLOADS_DIR,
     cleanup_old_files_worker,
 )
 from server.database import init_db
-from server.routers import all_namespaces
+from server.routers import all_namespaces, media_bp
 
 flask_app = Flask(__name__)
 flask_app.config["PROPAGATE_EXCEPTIONS"] = True
 CORS(flask_app, resources={r"/*": {"origins": "*"}})
+flask_app.register_blueprint(media_bp)
 
 authorizations = {
     "Bearer": {
         "type": "apiKey",
         "in": "header",
         "name": "Authorization",
-        "description": "JWT Authorization header using the Bearer scheme. Example: 'Bearer {token}'"
+        "description": "JWT Authorization header using Bearer scheme. Accepts both 'Bearer <token>' and raw '<token>'. Calling /api/v1/auth/login or /api/v1/auth/dev-token also sets session cookie automatically for all subsequent requests."
     }
 }
 
@@ -85,8 +88,9 @@ def ensure_startup_initialized():
         with _startup_lock:
             if not _startup_done:
                 init_db()
-                cleanup_thread = threading.Thread(target=cleanup_old_files_worker, daemon=True)
-                cleanup_thread.start()
+                if not DEBUG or os.environ.get("WERKZEUG_RUN_MAIN") == "true":
+                    cleanup_thread = threading.Thread(target=cleanup_old_files_worker, daemon=True)
+                    cleanup_thread.start()
                 _startup_done = True
 
 
@@ -100,4 +104,10 @@ app = WsgiToAsgi(flask_app)
 
 if __name__ == "__main__":
     ensure_startup_initialized()
-    flask_app.run(host=SERVER_HOST, port=SERVER_PORT, threaded=True)
+    flask_app.run(
+        host=SERVER_HOST,
+        port=SERVER_PORT,
+        debug=DEBUG,
+        use_reloader=DEBUG,
+        threaded=True
+    )
