@@ -7,12 +7,12 @@ import { toast } from "sonner";
 import { useAuthStore } from "@/stores/auth-store";
 import { AuthBackground } from "@/components/auth/auth-background";
 import { LoginBrandHeader } from "@/components/auth/login-brand-header";
-import { LoginForm } from "@/components/auth/login-form";
+import { RegisterForm } from "@/components/auth/register-form";
 import { LoginFooter } from "@/components/auth/login-footer";
 
-export default function LoginPage() {
+export default function RegisterPage() {
   const router = useRouter();
-  const { login, loginWithGoogle, isAuthenticated, isAdmin } = useAuthStore();
+  const { register, loginWithGoogle, isAuthenticated, isAdmin } = useAuthStore();
 
   const [isSubmitting, setIsSubmitting] = React.useState(false);
   const [isGoogleSubmitting, setIsGoogleSubmitting] = React.useState(false);
@@ -29,21 +29,21 @@ export default function LoginPage() {
     }
   }, [isAuthenticated, isAdmin, router]);
 
-  const handleLogin = async (cleanEmail: string, password: string) => {
+  const handleRegister = async (cleanEmail: string, password: string, fullName?: string) => {
     setIsSubmitting(true);
     setErrorMessage(null);
     try {
-      const user = await login(cleanEmail, password);
-      toast.success(`Đăng nhập thành công! Chào mừng ${user.full_name || user.email}`);
+      const user = await register(cleanEmail, password, fullName);
+      toast.success(`Đăng ký tài khoản thành công! Chào mừng ${user.full_name || user.email}`);
 
-      // Role-based routing: 1 -> Admin dashboard, 2 -> Client storefront
+      // Role-based routing
       if (user.role_id === 1) {
         router.push("/admin");
       } else {
         router.push("/");
       }
     } catch (error: unknown) {
-      let msg = "Tài khoản hoặc mật khẩu không chính xác.";
+      let msg = "Không thể đăng ký tài khoản. Vui lòng thử lại.";
       if (axios.isAxiosError(error) && error.response?.data?.detail) {
         msg = String(error.response.data.detail);
       } else if (axios.isAxiosError(error) && error.response?.data?.message) {
@@ -101,9 +101,9 @@ export default function LoginPage() {
         {/* Brand Header */}
         <LoginBrandHeader />
 
-        {/* Form & Dual-Auth Flow */}
-        <LoginForm
-          onLogin={handleLogin}
+        {/* Register Form */}
+        <RegisterForm
+          onRegister={handleRegister}
           onGoogleLogin={handleGoogleLogin}
           isSubmitting={isSubmitting}
           isGoogleSubmitting={isGoogleSubmitting}

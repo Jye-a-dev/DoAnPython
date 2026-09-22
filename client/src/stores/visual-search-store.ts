@@ -1,8 +1,9 @@
-"use client";
+﻿"use client";
 
 import { create } from "zustand";
 import axios from "axios";
-import { apiClient, resolveMediaUrl } from "@/lib/api-client";
+import { resolveMediaUrl } from "@/lib/api-client";
+import { detectionService, productService } from "@/services";
 import { DetectionResult, Product } from "@/types";
 import { toast } from "sonner";
 
@@ -61,9 +62,7 @@ export const useVisualSearchStore = create<VisualSearchState>((set) => ({
       formData.append("file", file);
 
       // 1. Gửi ảnh lên Gateway /detect
-      const detectResponse = await apiClient.post<DetectionResult>("/detect", formData, {
-        headers: { "Content-Type": "multipart/form-data" },
-      });
+      const detectResponse = await detectionService.detect(formData);
 
       const result = detectResponse.data;
       const resolvedAudio = resolveMediaUrl(result.audio_url);
@@ -89,9 +88,7 @@ export const useVisualSearchStore = create<VisualSearchState>((set) => ({
 
       // 3. Gọi /products/match-from-scan với record_id
       try {
-        const matchResponse = await apiClient.post<Product[]>("/products/match-from-scan", {
-          record_id: result.id,
-        });
+        const matchResponse = await productService.matchFromScan(result.id);
         set({
           matchedProducts: matchResponse.data || [],
           isLoadingMatches: false,

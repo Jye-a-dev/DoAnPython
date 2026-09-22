@@ -1,8 +1,8 @@
-"use client";
+﻿"use client";
 
 import { create } from "zustand";
-import { apiClient } from "@/lib/api-client";
-import { AuthResponse, User } from "@/types";
+import { authService, LoginPayload } from "@/services/auth.service";
+import { User } from "@/types";
 
 interface AuthState {
   token: string | null;
@@ -10,8 +10,14 @@ interface AuthState {
   isAuthenticated: boolean;
   isAdmin: boolean;
   isLoading: boolean;
-  login: (email: string, role_id?: number, full_name?: string) => Promise<void>;
-  loginWithGoogle: (idToken: string) => Promise<void>;
+  register: (email: string, password: string, fullName?: string) => Promise<User>;
+  login: (
+    email: string,
+    passwordOrRoleId?: string | number,
+    roleIdOrFullName?: number | string,
+    fullName?: string
+  ) => Promise<User>;
+  loginWithGoogle: (idToken: string) => Promise<User>;
   fetchMe: () => Promise<User | null>;
   logout: () => Promise<void>;
   initializeAuth: () => Promise<void>;
@@ -81,7 +87,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
   fetchMe: async () => {
     try {
-      const response = await apiClient.get<User>("/auth/me");
+      const response = await authService.getMe();
       const user = response.data;
       localStorage.setItem("auth_user", JSON.stringify(user));
       set({
@@ -103,13 +109,17 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     }
   },
 
-  login: async (email: string, role_id: number = 2, full_name?: string) => {
+  register: async (
+    email: string,
+    password: string,
+    fullName?: string
+  ): Promise<User> => {
     set({ isLoading: true });
     try {
-      const response = await apiClient.post<AuthResponse>("/auth/login", {
-        email,
-        role_id,
-        full_name,
+      const response = await authService.register({
+        email: email.trim().toLowerCase(),
+        password,
+        full_name: fullName?.trim() || undefined,
       });
       const { access_token, user } = response.data;
       localStorage.setItem("access_token", access_token);
@@ -121,18 +131,48 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         isAdmin: user.role_id === 1,
         isLoading: false,
       });
+      return user;
     } catch (error) {
       set({ isLoading: false });
       throw error;
     }
   },
 
-  loginWithGoogle: async (idToken: string) => {
+  login: async (
+    email: string,
+    passwordOrRoleId?: string | number,
+    roleIdOrFullName?: number | string,
+    fullName?: string
+  ): Promise<User> => {
     set({ isLoading: true });
     try {
-      const response = await apiClient.post<AuthResponse>("/auth/google", {
-        id_token: idToken,
-      });
+      let password: string | undefined;
+      let role_id: number | undefined;
+      let full_name: string | undefined;
+
+      if (typeof passwordOrRoleId === "number") {
+        role_id = passwordOrRoleId;
+        if (typeof roleIdOrFullName === "string") {
+          full_name = roleIdOrFullName;
+        }
+      } else if (typeof passwordOrRoleId === "string") {
+        password = passwordOrRoleId;
+        if (typeof roleIdOrFullName === "number") {
+          role_id = roleIdOrFullName;
+        }
+        if (typeof fullName === "string") {
+          full_name = fullName;
+        }
+      }
+
+      const payload: LoginPayload = {
+        email: email.trim().toLowerCase(),
+      };
+      if (password) payload.password = password;
+      if (role_id !== undefined) payload.role_id = role_id;
+      if (full_name) payload.full_name = full_name;
+
+      const response = await authService.login(payload);
       const { access_token, user } = response.data;
       localStorage.setItem("access_token", access_token);
       localStorage.setItem("auth_user", JSON.stringify(user));
@@ -143,6 +183,28 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         isAdmin: user.role_id === 1,
         isLoading: false,
       });
+      return user;
+    } catch (error) {
+      set({ isLoading: false });
+      throw error;
+    }
+  },
+
+  loginWithGoogle: async (idToken: string): Promise<User> => {
+    set({ isLoading: true });
+    try {
+      const response = await authService.loginWithGoogle(idToken);
+      const { access_token, user } = response.data;
+      localStorage.setItem("access_token", access_token);
+      localStorage.setItem("auth_user", JSON.stringify(user));
+      set({
+        token: access_token,
+        user,
+        isAuthenticated: true,
+        isAdmin: user.role_id === 1,
+        isLoading: false,
+      });
+      return user;
     } catch (error) {
       set({ isLoading: false });
       throw error;
@@ -151,7 +213,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
   logout: async () => {
     try {
-      await apiClient.post("/auth/logout");
+      await authService.logout();
     } catch {
       // Ignored if server session already expired
     } finally {
@@ -166,4 +228,3 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     }
   },
 }));
-

@@ -7,6 +7,9 @@ const nextConfig = {
   typescript: {
     ignoreBuildErrors: false,
   },
+  experimental: {
+    optimizePackageImports: ["lucide-react"],
+  },
   images: {
     formats: ["image/avif", "image/webp"],
     remotePatterns: [

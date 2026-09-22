@@ -56,7 +56,7 @@ def test_auth_flexibility_and_session_persistence():
     # 6. Test Single Login -> Cross-route access via Cookie & in-memory session
     clear_active_session_user()
     # Log in once via /api/v1/auth/login
-    login_res = client.post("/api/v1/auth/login", json={"email": "operator@test.local", "role_id": 1, "full_name": "Test Operator"})
+    login_res = client.post("/api/v1/auth/login", json={"email": "admin@system.local", "password": "Admin@System2026!"})
     assert login_res.status_code == 200, login_res.text
     cookies = login_res.headers.getlist("Set-Cookie")
     assert any("access_token=" in c for c in cookies), "Cookie access_token was not set!"
@@ -65,7 +65,7 @@ def test_auth_flexibility_and_session_persistence():
     # Call protected routes with NO Authorization header, relying on session/cookie
     res = client.get("/api/v1/auth/me")
     assert res.status_code == 200, f"Cross-route session failed: {res.text}"
-    assert res.get_json()["email"] == "operator@test.local"
+    assert res.get_json()["email"] == "admin@system.local"
     print("  [OK] Cross-route call to /auth/me succeeded with 0 headers ('log 1 lần là dùng tất cả route dc').")
 
     res = client.get("/api/v1/users/stats")

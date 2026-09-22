@@ -1,3 +1,4 @@
+import uuid
 from datetime import datetime, timezone
 
 import jwt
@@ -10,13 +11,15 @@ from server.core.common_models import message_model
 from server.core.security import (
     clear_active_session_user,
     create_access_token,
+    hash_password,
     set_active_session_user,
     token_required,
+    verify_password,
 )
 from server.database import get_db_session
 from server.models.user import User
 
-ns_auth = Namespace("Authentication & User Session", path="/api/v1/auth", description="Google Login, passwordless dev login, and user profile sessions")
+ns_auth = Namespace("Authentication & User Session", path="/api/v1/auth", description="Google Login, registration, password login, and user profile sessions")
 ns_auth.add_model("MessageResponse", message_model)
 
 user_model = ns_auth.model("UserProfile", {
@@ -38,8 +41,15 @@ google_auth_model = ns_auth.model("GoogleAuthPayload", {
     "id_token": fields.String(required=True, description="Google OAuth ID Token")
 })
 
+register_payload_model = ns_auth.model("RegisterPayload", {
+    "email": fields.String(required=True, example="user@example.com", description="User email address"),
+    "password": fields.String(required=True, example="SecurePass123!", description="Account password (min 6 characters)"),
+    "full_name": fields.String(required=False, example="Nguyen Van A", description="Display name for account")
+})
+
 login_payload_model = ns_auth.model("DirectLoginPayload", {
     "email": fields.String(required=True, default="admin@system.local", description="User email address"),
+    "password": fields.String(required=False, default="Admin@System2026!", description="Account password"),
     "full_name": fields.String(required=False, description="Display name for new accounts"),
     "role_id": fields.Integer(required=False, default=1, description="Role ID: 1 for admin, 2 for user")
 })
@@ -150,32 +160,91 @@ class GoogleAuth(Resource):
             return build_auth_response(user, token)
 
 
-@ns_auth.route("/login")
-class DirectLoginAuth(Resource):
-    @ns_auth.doc("direct_login", description="Log in directly by email, auto-create account if missing, save session cookie")
-    @ns_auth.expect(login_payload_model, validate=True)
-    @ns_auth.response(200, "Login successful", auth_response_model)
+@ns_auth.route("/register")
+class RegisterAuth(Resource):
+    @ns_auth.doc("register_user", description="Register a new standard user account with hashed password and issue JWT session")
+    @ns_auth.expect(register_payload_model, validate=True)
+    @ns_auth.response(201, "Registration successful", auth_response_model)
+    @ns_auth.response(400, "Validation error or email already exists")
     def post(self):
         data = request.json or {}
-        email = (data.get("email") or "admin@system.local").strip().lower()
-        role_id = int(data.get("role_id", 1))
-        full_name = (data.get("full_name") or email.split("@")[0]).strip()
+        email = (data.get("email") or "").strip().lower()
+        password = str(data.get("password") or "")
+        full_name = (data.get("full_name") or "").strip()
+
+        if not email:
+            return {"detail": "Vui lòng nhập địa chỉ email."}, 400
+
+        if "@" not in email or "." not in email.split("@")[-1]:
+            return {"detail": "Định dạng email không hợp lệ."}, 400
+
+        if len(password) < 6:
+            return {"detail": "Mật khẩu phải có độ dài tối thiểu 6 ký tự."}, 400
+
+        if not full_name:
+            full_name = email.split("@")[0]
+
+        with get_db_session() as session:
+            existing = session.exec(select(User).where(User.email == email)).first()
+            if existing:
+                return {"detail": f"Email '{email}' đã được đăng ký trong hệ thống."}, 400
+
+            new_user = User(
+                id=str(uuid.uuid4()),
+                email=email,
+                password_hash=hash_password(password),
+                full_name=full_name,
+                google_id=None,
+                avatar_url=None,
+                role_id=2,  # Fixed to standard user
+                is_active=True,
+                created_at=datetime.now(timezone.utc)
+            )
+            session.add(new_user)
+            session.commit()
+            session.refresh(new_user)
+
+            token = create_access_token(str(new_user.id), new_user.email, new_user.role_id)
+            resp = build_auth_response(new_user, token)
+            resp.status_code = 201
+            return resp
+
+
+@ns_auth.route("/login")
+class DirectLoginAuth(Resource):
+    @ns_auth.doc("direct_login", description="Log in by email and password, authenticate credentials, return JWT and cookie")
+    @ns_auth.expect(login_payload_model, validate=True)
+    @ns_auth.response(200, "Login successful", auth_response_model)
+    @ns_auth.response(400, "Missing required parameters")
+    @ns_auth.response(401, "Invalid credentials")
+    @ns_auth.response(403, "Account deactivated")
+    def post(self):
+        data = request.json or {}
+        email = (data.get("email") or "").strip().lower()
+        password = data.get("password")
+
+        if not email:
+            return {"detail": "Vui lòng nhập địa chỉ email."}, 400
 
         with get_db_session() as session:
             statement = select(User).where(User.email == email)
             user = session.exec(statement).first()
 
             if not user:
-                user = User(
-                    email=email,
-                    full_name=full_name,
-                    role_id=role_id,
-                    is_active=True,
-                    created_at=datetime.now(timezone.utc)
-                )
-                session.add(user)
-                session.commit()
-                session.refresh(user)
+                return {"detail": "Tài khoản hoặc mật khẩu không chính xác."}, 401
+
+            if not user.is_active:
+                return {"detail": "Tài khoản đã bị vô hiệu hóa. Vui lòng liên hệ quản trị viên."}, 403
+
+            if user.password_hash:
+                if not password or not verify_password(password, user.password_hash):
+                    return {"detail": "Tài khoản hoặc mật khẩu không chính xác."}, 401
+            else:
+                # User exists without password_hash (e.g. pure Google OAuth or legacy dev user)
+                if password:
+                    user.password_hash = hash_password(password)
+                    session.commit()
+                    session.refresh(user)
 
             token = create_access_token(str(user.id), user.email, user.role_id)
             return build_auth_response(user, token)

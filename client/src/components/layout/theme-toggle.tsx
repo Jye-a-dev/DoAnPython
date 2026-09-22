@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { useMounted } from "@/hooks/use-mounted";
 
 export function ThemeToggle() {
-  const { theme, setTheme } = useTheme();
+  const { resolvedTheme, setTheme } = useTheme();
   const mounted = useMounted();
 
   if (!mounted) {
@@ -18,7 +18,7 @@ export function ThemeToggle() {
     );
   }
 
-  const isDark = theme === "dark";
+  const isDark = resolvedTheme === "dark";
 
   return (
     <Button
@@ -26,7 +26,7 @@ export function ThemeToggle() {
       size="icon"
       onClick={() => setTheme(isDark ? "light" : "dark")}
       aria-label={`Switch to ${isDark ? "light" : "dark"} mode`}
-      className="relative"
+      className="relative cursor-pointer"
     >
       <Sun className="size-4 rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
       <Moon className="absolute size-4 rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />

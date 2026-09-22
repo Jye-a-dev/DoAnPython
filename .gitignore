@@ -60,3 +60,9 @@ server/static/uploads/*
 .DS_Store
 Thumbs.db
 
+# Next.js & TypeScript build cache
+*.tsbuildinfo
+client/tsconfig.tsbuildinfo
+next-env.d.ts
+client/next-env.d.ts
+

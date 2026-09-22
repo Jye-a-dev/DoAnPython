@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import * as React from "react";
 import Image from "next/image";
@@ -16,9 +16,9 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useVisualSearchStore } from "@/hooks/use-visual-search";
+import { useVisualSearchStore } from "@/stores/visual-search-store";
 import { resolveMediaUrl } from "@/lib/api-client";
-import { ProductCard } from "@/components/home/product-card";
+import { ProductCard } from "@/components/product/product-card";
 
 export function VisualSearchModal() {
   const {

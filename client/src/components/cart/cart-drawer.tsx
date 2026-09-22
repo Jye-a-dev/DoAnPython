@@ -11,7 +11,7 @@ import {
 } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { useCartStore } from "@/hooks/use-cart";
+import { useCartStore } from "@/stores/cart-store";
 import { formatVND } from "@/lib/utils";
 import { resolveMediaUrl } from "@/lib/api-client";
 import { Trash2, Plus, Minus, ShoppingBag, Volume2, CheckCircle2 } from "lucide-react";

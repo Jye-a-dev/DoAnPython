@@ -1,5 +1,10 @@
 @import "tailwindcss";
 
+/* Tailwind CSS v4 directive; ignored by standard CSS linters. */
+/* stylelint-disable at-rule-no-unknown */
+@custom-variant dark (&:where(.dark, .dark *));
+/* stylelint-enable at-rule-no-unknown */
+
 @layer base {
   :root {
     --background: 0 0% 100%;
@@ -21,33 +26,34 @@
     --border: 214.3 31.8% 91.4%;
     --input: 214.3 31.8% 91.4%;
     --ring: 221.2 83.2% 53.3%;
-    --radius: 0.625rem;
+    --radius: 0.75rem;
   }
 
   .dark {
-    --background: 222.2 84% 4.9%;
+    --background: 228 28% 4%; /* Deep #090A0F */
     --foreground: 210 40% 98%;
-    --card: 222.2 84% 4.9%;
+    --card: 226 25% 7%;
     --card-foreground: 210 40% 98%;
-    --popover: 222.2 84% 4.9%;
+    --popover: 226 25% 7%;
     --popover-foreground: 210 40% 98%;
     --primary: 217.2 91.2% 59.8%;
-    --primary-foreground: 222.2 47.4% 11.2%;
-    --secondary: 217.2 32.6% 17.5%;
+    --primary-foreground: 210 40% 98%;
+    --secondary: 224 20% 12%;
     --secondary-foreground: 210 40% 98%;
-    --muted: 217.2 32.6% 17.5%;
+    --muted: 224 20% 12%;
     --muted-foreground: 215 20.2% 65.1%;
-    --accent: 217.2 32.6% 17.5%;
+    --accent: 224 20% 14%;
     --accent-foreground: 210 40% 98%;
     --destructive: 0 62.8% 30.6%;
     --destructive-foreground: 210 40% 98%;
-    --border: 217.2 32.6% 17.5%;
-    --input: 217.2 32.6% 17.5%;
+    --border: 224 20% 14%;
+    --input: 224 20% 14%;
     --ring: 224.3 76.3% 48%;
   }
 }
 
 @theme inline {
+  --font-sans: var(--font-sans), ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   --color-background: hsl(var(--background));
   --color-foreground: hsl(var(--foreground));
   --color-card: hsl(var(--card));
@@ -82,6 +88,7 @@ html {
 }
 
 body {
+  font-family: var(--font-sans), ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   background-color: hsl(var(--background));
   color: hsl(var(--foreground));
   font-feature-settings: "cv02", "cv03", "cv04", "cv11";
@@ -90,3 +97,88 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
+/* GPU-accelerated Keyframes for Scan Beam & Waveform */
+@keyframes scanBeamAnim {
+  0% {
+    transform: translate3d(0, 0%, 0);
+    opacity: 0.3;
+  }
+  50% {
+    transform: translate3d(0, 220px, 0);
+    opacity: 1;
+  }
+  100% {
+    transform: translate3d(0, 0%, 0);
+    opacity: 0.3;
+  }
+}
+
+@keyframes soundWaveAnim {
+  0%, 100% {
+    transform: scaleY(0.25);
+  }
+  50% {
+    transform: scaleY(1);
+  }
+}
+
+@keyframes pulseGlowAnim {
+  0%, 100% {
+    opacity: 0.4;
+    transform: scale3d(1, 1, 1);
+  }
+  50% {
+    opacity: 0.8;
+    transform: scale3d(1.04, 1.04, 1);
+  }
+}
+
+.animate-scan-beam {
+  animation: scanBeamAnim 2.8s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+  will-change: transform, opacity;
+}
+
+.animate-sound-wave {
+  animation: soundWaveAnim 1.2s ease-in-out infinite;
+  transform-origin: bottom center;
+  will-change: transform;
+}
+
+.animate-pulse-glow {
+  animation: pulseGlowAnim 3s ease-in-out infinite;
+  will-change: transform, opacity;
+}
+
+/* 90 FPS Performance: Content-visibility for 0ms off-screen paint & scroll stabilization */
+.content-visibility-card {
+  content-visibility: auto;
+  contain-intrinsic-size: 0 420px;
+}
+
+/* 90 FPS Performance: High-contrast Faux-Glassmorphic surfaces with 0ms composite cost */
+.faux-glass-card {
+  background-color: rgba(255, 255, 255, 0.92);
+  border: 1px solid rgba(226, 232, 240, 0.85);
+}
+
+.dark .faux-glass-card {
+  background-color: rgba(15, 23, 42, 0.85);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+/* 90 FPS Performance: Isolate large blurred ambient blobs from main raster pipeline */
+.ambient-glow-layer {
+  contain: strict;
+  transform: translateZ(0);
+  pointer-events: none;
+}
+
+/* Fallback for users preferring reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  *, ::before, ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

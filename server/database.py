@@ -77,9 +77,28 @@ def init_db():
             cursor.execute("DROP TABLE IF EXISTS roles;")
             conn.commit()
 
+        if user_cols and "PASSWORD_HASH" not in user_cols and not needs_rebuild:
+            cursor.execute("ALTER TABLE users ADD COLUMN password_hash VARCHAR(255);")
+            conn.commit()
+
         if SCHEMA_PATH.exists():
             with open(SCHEMA_PATH, "r", encoding="utf-8") as f:
                 conn.executescript(f.read())
+
+        # Đồng bộ mật khẩu mẫu cho các tài khoản seed
+        admin_default_hash = "scrypt:32768:8:1$lQ17xvm4CDWZJ6Jw$056dc4a87c17561c0bfeb839f395fe22c5f807cadd9fcbdbb37b244f9f559b55525df4db9a65e631527698c3ad14b0f12ac34c18e2b86d5ccd2616515e34b103"
+        customer_default_hash = "scrypt:32768:8:1$wAs2UGIyT9u1cMBM$f273f769b6057be5cd35bf3d38e8c6a73a5253a47bfc120fe64365303e26e9b2692fc989e08dff9ce1b5d5bb213f176ac01453668ef946851638666ccdb45f76"
+        user_default_hash = "scrypt:32768:8:1$N9bCwNA6inWkM9f5$954ac9c2f5ecf8a799e8d57fb641c9a52d7e37a27252930ab27484e526b2fe2323de18100df89e3814dfc2b864ee09442c83617cd175e14cc00d50d425dc1fdb"
+
+        cursor.execute("UPDATE users SET password_hash = ? WHERE email = 'admin@system.local' AND (password_hash IS NULL OR password_hash = '');", (admin_default_hash,))
+        cursor.execute("UPDATE users SET password_hash = ? WHERE email = 'customer@shop.vn' AND (password_hash IS NULL OR password_hash = '');", (customer_default_hash,))
+        cursor.execute("UPDATE users SET password_hash = ? WHERE email = 'user@system.local' AND (password_hash IS NULL OR password_hash = '');", (user_default_hash,))
+        cursor.execute("""
+            INSERT OR IGNORE INTO users (id, google_id, email, password_hash, full_name, role_id, is_active) VALUES
+            ('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', 'customer_default', 'customer@shop.vn', ?, 'Khách Hàng Mẫu', 2, 1),
+            ('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbc', 'user_default', 'user@system.local', ?, 'Người Dùng Test', 2, 1);
+        """, (customer_default_hash, user_default_hash))
+        conn.commit()
 
         # Đảm bảo các composite indexes được khởi tạo đồng bộ
         conn.execute("CREATE INDEX IF NOT EXISTS idx_ocr_records_user_status_id ON ocr_records (user_id, status, id DESC);")

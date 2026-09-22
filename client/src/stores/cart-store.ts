@@ -1,9 +1,9 @@
-"use client";
+﻿"use client";
 
 import { create } from "zustand";
 import axios from "axios";
-import { apiClient } from "@/lib/api-client";
-import { CartItem, CartResponse, Order } from "@/types";
+import { cartService } from "@/services/cart.service";
+import { CartItem, Order } from "@/types";
 import { toast } from "sonner";
 
 interface CartState {
@@ -40,7 +40,7 @@ export const useCartStore = create<CartState>((set, get) => ({
   fetchCart: async () => {
     set({ isLoading: true });
     try {
-      const response = await apiClient.get<CartResponse>("/cart");
+      const response = await cartService.getCart();
       set({
         items: response.data.items || [],
         totalItems: response.data.total_items || 0,
@@ -54,7 +54,7 @@ export const useCartStore = create<CartState>((set, get) => ({
 
   addToCart: async (productId: string, quantity: number = 1, recordId?: string) => {
     try {
-      await apiClient.post("/cart/items", {
+      await cartService.addItem({
         product_id: productId,
         quantity,
         record_id: recordId,
@@ -73,7 +73,7 @@ export const useCartStore = create<CartState>((set, get) => ({
 
   updateQuantity: async (itemId: string, quantity: number) => {
     try {
-      await apiClient.put(`/cart/items/${itemId}`, { quantity });
+      await cartService.updateQuantity(itemId, quantity);
       await get().fetchCart();
     } catch (error: unknown) {
       let msg = "Lỗi cập nhật giỏ hàng.";
@@ -86,7 +86,7 @@ export const useCartStore = create<CartState>((set, get) => ({
 
   removeItem: async (itemId: string) => {
     try {
-      await apiClient.put(`/cart/items/${itemId}`, { quantity: 0 });
+      await cartService.removeItem(itemId);
       toast.success("Đã bỏ sản phẩm khỏi giỏ.");
       await get().fetchCart();
     } catch (error: unknown) {
@@ -100,7 +100,7 @@ export const useCartStore = create<CartState>((set, get) => ({
 
   clearCart: async () => {
     try {
-      await apiClient.delete("/cart");
+      await cartService.clearCart();
       set({ items: [], totalItems: 0, totalAmount: 0 });
       toast.success("Đã dọn sạch giỏ hàng.");
     } catch (error: unknown) {
@@ -115,7 +115,7 @@ export const useCartStore = create<CartState>((set, get) => ({
   checkout: async (shippingAddress: string, phoneNumber: string) => {
     set({ isCheckingOut: true, confirmationAudioUrl: null });
     try {
-      const response = await apiClient.post<Order>("/orders/checkout", {
+      const response = await cartService.checkout({
         shipping_address: shippingAddress,
         phone_number: phoneNumber,
       });

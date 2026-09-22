@@ -13,11 +13,12 @@ INSERT OR IGNORE INTO roles (id, name, description) VALUES
 (1, 'admin', 'Quản trị viên: thẩm định, chỉnh sửa và đánh giá độ chính xác'),
 (2, 'user', 'Người dùng: sử dụng camera OCR thời gian thực');
 
--- 2. Bảng Users (UUID v4 Primary Key)
+-- 2. Bảng Users (UUID v4 Primary Key & Password Hash)
 CREATE TABLE IF NOT EXISTS users (
     id VARCHAR(36) PRIMARY KEY NOT NULL,
     google_id VARCHAR(100) UNIQUE,
     email VARCHAR(100) NOT NULL UNIQUE,
+    password_hash VARCHAR(255),
     full_name VARCHAR(100),
     avatar_url TEXT,
     is_active BOOLEAN DEFAULT 1 NOT NULL,
@@ -28,8 +29,10 @@ CREATE TABLE IF NOT EXISTS users (
 
 CREATE INDEX IF NOT EXISTS idx_users_email ON users (email);
 
-INSERT OR IGNORE INTO users (id, google_id, email, full_name, role_id, is_active) VALUES
-('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'admin_default', 'admin@system.local', 'Default Admin', 1, 1);
+INSERT OR IGNORE INTO users (id, google_id, email, password_hash, full_name, role_id, is_active) VALUES
+('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'admin_default', 'admin@system.local', 'scrypt:32768:8:1$lQ17xvm4CDWZJ6Jw$056dc4a87c17561c0bfeb839f395fe22c5f807cadd9fcbdbb37b244f9f559b55525df4db9a65e631527698c3ad14b0f12ac34c18e2b86d5ccd2616515e34b103', 'Default Admin', 1, 1),
+('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', 'customer_default', 'customer@shop.vn', 'scrypt:32768:8:1$wAs2UGIyT9u1cMBM$f273f769b6057be5cd35bf3d38e8c6a73a5253a47bfc120fe64365303e26e9b2692fc989e08dff9ce1b5d5bb213f176ac01453668ef946851638666ccdb45f76', 'Khách Hàng Mẫu', 2, 1),
+('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbc', 'user_default', 'user@system.local', 'scrypt:32768:8:1$N9bCwNA6inWkM9f5$954ac9c2f5ecf8a799e8d57fb641c9a52d7e37a27252930ab27484e526b2fe2323de18100df89e3814dfc2b864ee09442c83617cd175e14cc00d50d425dc1fdb', 'Người Dùng Test', 2, 1);
 
 -- 3. Bảng OCR Records (UUID v4 & SQLite BLOB)
 CREATE TABLE IF NOT EXISTS ocr_records (

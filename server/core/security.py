@@ -5,6 +5,7 @@ from typing import Optional
 import jwt
 from flask import request
 from sqlmodel import select
+from werkzeug.security import check_password_hash, generate_password_hash
 
 from server.core.config import (
     AUTH_BYPASS_DEV,
@@ -47,6 +48,21 @@ def create_access_token(user_id: str, email: str, role_id: int) -> str:
         "iat": datetime.now(timezone.utc)
     }
     return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
+
+
+def hash_password(password: str) -> str:
+    """Hash raw password string using scrypt method."""
+    return generate_password_hash(password, method="scrypt")
+
+
+def verify_password(password: str, password_hash: Optional[str]) -> bool:
+    """Verify raw password against scrypt hash; safely return False if hash is None (e.g., OAuth users)."""
+    if not password_hash or not password:
+        return False
+    try:
+        return check_password_hash(password_hash, password)
+    except Exception:
+        return False
 
 
 # In-memory single-session cache allowing server-wide persistence after logging in once

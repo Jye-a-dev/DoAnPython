@@ -20,6 +20,7 @@ class User(UserBase, table=True):
     __tablename__ = "users"
 
     id: str = Field(default_factory=lambda: str(uuid.uuid4()), primary_key=True)
+    password_hash: Optional[str] = Field(default=None, max_length=255, description="Scrypt password hash")
     created_at: datetime = Field(
         default_factory=lambda: datetime.now(timezone.utc),
         nullable=False
@@ -28,7 +29,7 @@ class User(UserBase, table=True):
 
 class UserCreate(UserBase):
     """Payload schema for creating a new user."""
-    pass
+    password: Optional[str] = Field(default=None, description="Plaintext raw password")
 
 
 class UserUpdate(SQLModel):
