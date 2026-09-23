@@ -8,7 +8,8 @@ from sqlalchemy.orm import defer
 from sqlmodel import select
 
 from server.core.common_models import count_model, message_model
-from server.core.pipeline_client import fetch_media_bytes
+from server.core.config import UPLOADS_DIR
+from server.core.pipeline_client import call_pipeline_vlm_suggest, fetch_media_bytes
 from server.core.security import admin_required, token_required
 from server.database import get_db_session
 from server.models.ocr_record import OCRRecord
@@ -313,3 +314,61 @@ class OCRRecordStatusResource(Resource):
             session.commit()
             session.refresh(record)
             return serialize_ocr_record(record), 200
+
+
+vlm_suggestion_response_model = ns_records.model("VLMSuggestionResponse", {
+    "suggested_label": fields.String,
+    "confidence": fields.Float,
+    "explanation": fields.String,
+    "suggested_class_name": fields.String
+})
+
+
+@ns_records.route("/<string:record_id>/vlm-suggest")
+class OCRRecordVLMSuggest(Resource):
+    @ns_records.doc("vlm_suggest_record", security="Bearer", description="3-Phase Isolated VLM label refinement")
+    @ns_records.response(200, "Success", vlm_suggestion_response_model)
+    @ns_records.response(404, "Record not found")
+    @admin_required
+    def post(self, record_id: str, current_user: dict):
+        # Phase 1: Read & Release immediately
+        raw_image_data = None
+        ocr_json_data = None
+        with get_db_session() as session:
+            record = session.get(OCRRecord, record_id)
+            if not record:
+                return {"detail": f"Record ID {record_id} not found."}, 404
+            raw_image_data = record.raw_image_data
+            ocr_json_data = record.ocr_json_data
+
+        # Phase 2: Network I/O outside DB session
+        image_path = ""
+        if raw_image_data:
+            temp_path = UPLOADS_DIR / f"vlm_{record_id}.jpg"
+            try:
+                temp_path.write_bytes(raw_image_data)
+                image_path = str(temp_path)
+            except Exception:
+                pass
+
+        box = None
+        raw_label = ""
+        raw_label_vi = ""
+        try:
+            parsed = json.loads(ocr_json_data) if isinstance(ocr_json_data, str) else ocr_json_data
+            if isinstance(parsed, list) and len(parsed) > 0:
+                first_obj = parsed[0]
+                box = first_obj.get("box")
+                raw_label = first_obj.get("name", "")
+                raw_label_vi = first_obj.get("label_vi", "")
+        except Exception:
+            pass
+
+        suggestion = call_pipeline_vlm_suggest(
+            image_path=image_path,
+            box=box,
+            raw_label=raw_label,
+            raw_label_vi=raw_label_vi
+        )
+
+        return suggestion, 200

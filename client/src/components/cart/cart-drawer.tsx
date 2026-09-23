@@ -225,7 +225,7 @@ export function CartDrawer() {
                   <Button
                     type="submit"
                     disabled={isCheckingOut}
-                    className="w-full gap-2 font-bold shadow-md bg-gradient-to-r from-primary to-blue-600"
+                    className="w-full gap-2 font-bold shadow-md bg-linear-to-r from-primary to-blue-600"
                   >
                     {isCheckingOut ? (
                       <span>Đang xử lý & Tạo giọng đọc...</span>

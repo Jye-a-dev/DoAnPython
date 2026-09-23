@@ -1,14 +1,17 @@
 import json
+import time
 from datetime import datetime, timezone
 
 from flask import request
 from flask_restx import Namespace, Resource, fields
-from sqlalchemy import func
+from sqlalchemy import func, text
 from sqlmodel import select
 
 from server.core.common_models import count_model, message_model
+from server.core.pipeline_client import call_pipeline_inference
 from server.core.security import admin_required
 from server.database import get_db_session
+from server.models.category import Category
 from server.models.ocr_record import OCRRecord
 from server.models.product import Product
 
@@ -87,6 +90,54 @@ match_scan_model = ns_products.model("MatchScanRequest", {
     "record_id": fields.String(required=True, description="Target camera scan record ID")
 })
 
+auto_tag_response_model = ns_products.model("AutoTagResponse", {
+    "class_name": fields.String,
+    "tag": fields.String,
+    "label_vi": fields.String,
+    "suggested_category_id": fields.String,
+    "suggested_category_name": fields.String,
+    "confidence": fields.Float,
+    "summary": fields.String
+})
+
+inventory_forecast_item_model = ns_products.model("InventoryForecastItem", {
+    "product_id": fields.String,
+    "sku": fields.String,
+    "name": fields.String,
+    "class_name": fields.String,
+    "stock_quantity": fields.Integer,
+    "scan_count_7d": fields.Integer,
+    "daily_scan_rate": fields.Float,
+    "stockout_eta_days": fields.Float,
+    "urgency": fields.String,
+    "warning_badge": fields.String
+})
+
+inventory_forecast_response_model = ns_products.model("InventoryForecastResponse", {
+    "items": fields.List(fields.Nested(inventory_forecast_item_model)),
+    "high_demand_count": fields.Integer,
+    "cached_at": fields.String
+})
+
+# In-Memory TTL Cache for Inventory Forecast (300 seconds)
+_forecast_cache = {"data": None, "timestamp": 0}
+CACHE_TTL_SECONDS = 300
+
+COCO_CATEGORY_KEYWORDS = {
+    "laptop": ["công nghệ", "máy tính", "điện tử", "laptop"],
+    "mouse": ["công nghệ", "phụ kiện", "chuột"],
+    "keyboard": ["công nghệ", "phụ kiện", "bàn phím"],
+    "cell phone": ["công nghệ", "điện thoại"],
+    "bottle": ["gia dụng", "đời sống", "chai nước", "bình nước"],
+    "cup": ["gia dụng", "đời sống", "cốc nước", "ly nước"],
+    "backpack": ["thời trang", "phụ kiện", "ba lô", "túi xách"],
+    "handbag": ["thời trang", "phụ kiện", "túi xách"],
+    "book": ["sách", "văn phòng phẩm"],
+    "apple": ["thực phẩm", "trái cây", "đồ ăn"],
+    "orange": ["thực phẩm", "trái cây", "đồ ăn"],
+    "banana": ["thực phẩm", "trái cây", "đồ ăn"],
+}
+
 
 def product_to_dict(p: Product) -> dict:
     """Serializes a Product SQLModel instance into standard API dictionary."""
@@ -146,6 +197,160 @@ class ProductStats(Resource):
                 "total_stock_units": total_stock,
                 "total_inventory_value": round(total_val, 2)
             }, 200
+
+
+@ns_products.route("/auto-tag")
+class ProductAutoTag(Resource):
+    @ns_products.doc("auto_tag_product", security="Bearer", description="Analyze uploaded photo via YOLO and suggest #class_name tag and category")
+    @ns_products.response(200, "Success", auto_tag_response_model)
+    @ns_products.response(400, "No valid image provided")
+    @admin_required
+    def post(self, current_user: dict):
+        uploaded_file = request.files.get("file") or request.files.get("image")
+        if not uploaded_file:
+            return {"detail": "Yêu cầu tải lên file ảnh (key: 'file' hoặc 'image')."}, 400
+
+        file_bytes = uploaded_file.read()
+        filename = uploaded_file.filename or "product_upload.jpg"
+
+        inference = call_pipeline_inference(file_bytes, filename)
+        detected_objects = inference.get("objects", [])
+
+        if not detected_objects:
+            return {
+                "class_name": "general",
+                "tag": "#general",
+                "label_vi": "sản phẩm chung",
+                "suggested_category_id": None,
+                "suggested_category_name": None,
+                "confidence": 0.5,
+                "summary": "Không phát hiện đối tượng COCO rõ ràng."
+            }, 200
+
+        top_obj = max(detected_objects, key=lambda x: x.get("confidence", 0.0))
+        raw_class = (top_obj.get("name") or "general").strip().lower()
+        label_vi = top_obj.get("label_vi") or raw_class
+        tag = f"#{raw_class}"
+        confidence = float(top_obj.get("confidence", 0.9))
+
+        suggested_cat_id = None
+        suggested_cat_name = None
+
+        with get_db_session() as session:
+            categories = session.exec(select(Category)).all()
+            target_keywords = COCO_CATEGORY_KEYWORDS.get(raw_class, [raw_class, label_vi.lower()])
+            for cat in categories:
+                cat_name_lower = cat.name.lower()
+                cat_slug_lower = cat.slug.lower()
+                if any(kw in cat_name_lower or kw in cat_slug_lower for kw in target_keywords):
+                    suggested_cat_id = cat.id
+                    suggested_cat_name = cat.name
+                    break
+
+        return {
+            "class_name": raw_class,
+            "tag": tag,
+            "label_vi": label_vi,
+            "suggested_category_id": suggested_cat_id,
+            "suggested_category_name": suggested_cat_name,
+            "confidence": confidence,
+            "summary": inference.get("summary", "")
+        }, 200
+
+
+@ns_products.route("/inventory-forecast")
+class ProductInventoryForecast(Resource):
+    @ns_products.doc("get_inventory_forecast", description="Calculate correlation between camera scans and product inventory with 300s TTL cache")
+    @ns_products.response(200, "Success", inventory_forecast_response_model)
+    def get(self):
+        global _forecast_cache
+        current_time = time.time()
+        if _forecast_cache["data"] is not None and (current_time - _forecast_cache["timestamp"] < CACHE_TTL_SECONDS):
+            return _forecast_cache["data"], 200
+
+        scan_counts = {}
+        with get_db_session() as session:
+            try:
+                # Fast extraction via SQLite JSON1 extension
+                rows = session.exec(text("""
+                    SELECT 
+                        LOWER(TRIM(json_extract(j.value, '$.name'))) AS class_name, 
+                        COUNT(*) AS scan_count
+                    FROM ocr_records, json_each(ocr_records.ocr_json_data) AS j
+                    WHERE created_at >= datetime('now', '-7 days')
+                      AND json_extract(j.value, '$.name') IS NOT NULL
+                    GROUP BY class_name
+                """)).all()
+                for r in rows:
+                    if r[0]:
+                        scan_counts[r[0]] = int(r[1])
+            except Exception:
+                # Resilient fallback if json_each is not supported
+                cutoff = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0)
+                records = session.exec(select(OCRRecord).where(OCRRecord.created_at >= cutoff)).all()
+                for rec in records:
+                    try:
+                        objs = json.loads(rec.ocr_json_data) if isinstance(rec.ocr_json_data, str) else rec.ocr_json_data
+                        for o in objs:
+                            name = (o.get("name") or "").strip().lower()
+                            if name:
+                                scan_counts[name] = scan_counts.get(name, 0) + 1
+                    except Exception:
+                        pass
+
+            products = session.exec(select(Product)).all()
+
+            forecast_items = []
+            high_demand_count = 0
+
+            for p in products:
+                clean_class = (p.class_name or "").lstrip("#").strip().lower()
+                scans_7d = scan_counts.get(clean_class, 0)
+                daily_rate = round(scans_7d / 7.0, 2)
+                stockout_eta = round(p.stock_quantity / daily_rate, 1) if daily_rate > 0 else None
+
+                urgency = "NORMAL"
+                warning_badge = None
+
+                if p.stock_quantity <= 5 and scans_7d >= 8:
+                    urgency = "CRITICAL"
+                    warning_badge = f"🔥 Nhu cầu cao - Tồn kho dưới 5 (Đã quét {scans_7d} lần tuần này)"
+                    high_demand_count += 1
+                elif p.stock_quantity <= 10 and scans_7d >= 4:
+                    urgency = "HIGH"
+                    warning_badge = f"🔥 Nhu cầu cao - Tồn kho dưới 10 (Đã quét {scans_7d} lần tuần này)"
+                    high_demand_count += 1
+                elif p.stock_quantity <= 15 and scans_7d >= 2:
+                    urgency = "MODERATE"
+                    warning_badge = f"⚡ Nhu cầu tăng - Tồn kho {p.stock_quantity} (Đã quét {scans_7d} lần tuần này)"
+
+                forecast_items.append({
+                    "product_id": p.id,
+                    "sku": p.sku,
+                    "name": p.name,
+                    "class_name": p.class_name or clean_class,
+                    "stock_quantity": p.stock_quantity,
+                    "scan_count_7d": scans_7d,
+                    "daily_scan_rate": daily_rate,
+                    "stockout_eta_days": stockout_eta,
+                    "urgency": urgency,
+                    "warning_badge": warning_badge
+                })
+
+            # Sort critical and high urgency first
+            urgency_rank = {"CRITICAL": 0, "HIGH": 1, "MODERATE": 2, "NORMAL": 3}
+            forecast_items.sort(key=lambda x: (urgency_rank.get(x["urgency"], 3), -(x["scan_count_7d"])))
+
+            response_data = {
+                "items": forecast_items,
+                "high_demand_count": high_demand_count,
+                "cached_at": datetime.now(timezone.utc).isoformat()
+            }
+
+            _forecast_cache["data"] = response_data
+            _forecast_cache["timestamp"] = current_time
+
+            return response_data, 200
 
 
 @ns_products.route("/match-from-scan")

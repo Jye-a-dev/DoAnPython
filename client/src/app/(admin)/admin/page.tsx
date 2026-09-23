@@ -5,6 +5,7 @@ import { useAuthStore } from "@/stores/auth-store";
 import { adminService } from "@/services";
 import { ProductStats, OrderStats, DetectionRecord } from "@/types";
 import { AdminHeader } from "@/components/admin/admin-header";
+import { AdminDailyBriefing } from "@/components/admin/admin-daily-briefing";
 import { AdminMetricsCards } from "@/components/admin/admin-metrics-cards";
 import { AdminAuditLog } from "@/components/admin/admin-audit-log";
 
@@ -27,7 +28,7 @@ export default function AdminDashboardPage() {
 
       if (pStatsRes) setProductStats(pStatsRes.data);
       if (oStatsRes) setOrderStats(oStatsRes.data);
-      if (histRes) setHistoryRecords(histRes.data?.records || []);
+      if (histRes) setHistoryRecords(Array.isArray(histRes.data) ? histRes.data : []);
     } finally {
       setIsLoading(false);
     }
@@ -44,7 +45,10 @@ export default function AdminDashboardPage() {
       {/* 1. Header Toolbar (Banner + Refresh Button) */}
       <AdminHeader isLoading={isLoading} onRefresh={loadDashboardData} />
 
-      {/* 2. KPI Metrics Cards */}
+      {/* 2. Executive Daily Briefing */}
+      <AdminDailyBriefing />
+
+      {/* 3. KPI Metrics Cards */}
       <AdminMetricsCards
         isLoading={isLoading}
         productStats={productStats}

@@ -134,3 +134,5 @@ export interface OrderStats {
   cancelled_orders: number;
 }
 
+export * from "./admin";
+

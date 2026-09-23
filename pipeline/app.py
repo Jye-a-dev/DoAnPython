@@ -28,10 +28,12 @@ try:
     from pipeline.detector import get_detector
     from pipeline.schemas import DetectionResult
     from pipeline.tts_engine import generate_audio
+    from pipeline.vlm_engine import get_vlm_suggestion
 except ImportError:
     from detector import get_detector
     from schemas import DetectionResult
     from tts_engine import generate_audio
+    from vlm_engine import get_vlm_suggestion
 
 PIPELINE_HOST = os.getenv("PIPELINE_HOST", "0.0.0.0")
 PIPELINE_PORT = int(os.getenv("PIPELINE_PORT", 3100))
@@ -54,6 +56,20 @@ class TTSSynthesizeRequest(BaseModel):
 class TTSSynthesizeResponse(BaseModel):
     audio_url: str
     status: str = "success"
+
+
+class VLMSuggestRequest(BaseModel):
+    image_path: str = Field(..., description="Absolute path or relative path to image file")
+    box: Optional[dict] = Field(default=None, description="Bounding box dict with xmin, ymin, xmax, ymax")
+    raw_label: Optional[str] = Field(default="", description="COCO raw label in English")
+    raw_label_vi: Optional[str] = Field(default="", description="COCO label in Vietnamese")
+
+
+class VLMSuggestResponse(BaseModel):
+    suggested_label: str
+    confidence: float = 0.95
+    explanation: str
+    suggested_class_name: str
 
 
 @asynccontextmanager
@@ -212,6 +228,32 @@ async def synthesize_tts_endpoint(payload: TTSSynthesizeRequest) -> dict:
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"TTS synthesis failed: {str(ex)}"
         )
+
+
+@app.post("/internal/v1/vlm/suggest", response_model=VLMSuggestResponse, tags=["Inference"])
+async def vlm_suggest_endpoint(payload: VLMSuggestRequest) -> dict:
+    """Provides 2-tier context-aware label refinement (Gemini Vision -> Local Heuristic Fallback)."""
+    # Resolve relative paths against static dirs if needed
+    img_path = Path(payload.image_path)
+    if not img_path.is_absolute() or not img_path.exists():
+        candidates = [
+            STATIC_DIR / payload.image_path.lstrip("/"),
+            UPLOADS_DIR / payload.image_path.lstrip("/"),
+            PROJECT_ROOT / payload.image_path.lstrip("/"),
+            UPLOADS_DIR / Path(payload.image_path).name,
+        ]
+        for c in candidates:
+            if c.exists() and c.is_file():
+                img_path = c
+                break
+
+    suggestion = await get_vlm_suggestion(
+        image_path=str(img_path),
+        box=payload.box,
+        raw_label=payload.raw_label or "",
+        raw_label_vi=payload.raw_label_vi or ""
+    )
+    return suggestion
 
 
 if __name__ == "__main__":

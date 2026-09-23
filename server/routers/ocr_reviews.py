@@ -43,6 +43,15 @@ review_stats_model = ns_reviews.model("OCRReviewStatsResponse", {
     "rejected_count": fields.Integer
 })
 
+preview_tts_request_model = ns_reviews.model("OCRReviewPreviewTTSRequest", {
+    "text": fields.String(required=True, description="Text string to synthesize for preview")
+})
+
+preview_tts_response_model = ns_reviews.model("OCRReviewPreviewTTSResponse", {
+    "audio_url": fields.String(description="Synthesized audio URL"),
+    "status": fields.String(default="success")
+})
+
 review_model = ns_reviews.model("OCRReview", {
     "id": fields.String,
     "record_id": fields.String,
@@ -82,6 +91,20 @@ class OCRReviewStats(Resource):
                 "approved_count": approved,
                 "rejected_count": rejected
             }, 200
+
+
+@ns_reviews.route("/preview-tts")
+class OCRReviewPreviewTTS(Resource):
+    @ns_reviews.doc("preview_tts", description="Stateless TTS preview generation without saving to database")
+    @ns_reviews.expect(preview_tts_request_model, validate=True)
+    @ns_reviews.response(200, "Success", preview_tts_response_model)
+    def post(self):
+        data = request.json or {}
+        text = (data.get("text") or "").strip()
+        if not text:
+            return {"detail": "Text cannot be empty."}, 400
+        audio_url = call_pipeline_tts(text)
+        return {"audio_url": audio_url, "status": "success"}, 200
 
 
 @ns_reviews.route("")
