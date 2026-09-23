@@ -1,7 +1,5 @@
 import type { Metadata, Viewport } from "next";
 import { Inter } from "next/font/google";
-import { Navbar } from "@/components/layout/navbar";
-import { Footer } from "@/components/layout/footer";
 import { Providers } from "@/providers";
 import "@/styles/globals.css";
 
@@ -27,7 +25,15 @@ export const metadata: Metadata = {
   },
   description:
     "Nền tảng mua sắm kết hợp mô hình YOLO AI nhận diện ảnh và công nghệ chuyển văn bản thành giọng nói (TTS) thời gian thực.",
-  keywords: ["Visual AI", "YOLO", "E-Commerce", "Next.js 15", "App Router", "Object Detection", "Voice Checkout"],
+  keywords: [
+    "Visual AI",
+    "YOLO",
+    "E-Commerce",
+    "Next.js 15",
+    "App Router",
+    "Object Detection",
+    "Voice Checkout",
+  ],
 };
 
 export default function RootLayout({
@@ -37,12 +43,8 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="vi" suppressHydrationWarning className={inter.variable}>
-      <body className="min-h-screen bg-background font-sans text-foreground antialiased flex flex-col">
-        <Providers>
-          <Navbar />
-          <main className="flex-1 flex flex-col">{children}</main>
-          <Footer />
-        </Providers>
+      <body className="min-h-screen bg-background font-sans text-foreground antialiased selection:bg-primary/20 selection:text-primary">
+        <Providers>{children}</Providers>
       </body>
     </html>
   );

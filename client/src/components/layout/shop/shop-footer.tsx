@@ -21,7 +21,7 @@ function GithubIcon(props: React.SVGProps<SVGSVGElement>) {
   );
 }
 
-export function Footer() {
+export function ShopFooter() {
   return (
     <footer className="w-full border-t border-border bg-muted/30 text-muted-foreground">
       <div className="container mx-auto px-4 sm:px-8 py-16 space-y-12">
@@ -53,28 +53,28 @@ export function Footer() {
             </h4>
             <ul className="space-y-2 text-xs text-muted-foreground">
               <li>
-                <Link href="#hero" className="hover:text-primary transition-colors">
+                <Link href="/#hero" className="hover:text-primary transition-colors">
                   Quét Ảnh AI (Live Scanner)
                 </Link>
               </li>
               <li>
-                <Link href="#features" className="hover:text-primary transition-colors">
+                <Link href="/#features" className="hover:text-primary transition-colors">
                   Cách Hoạt Động (Bento Grid)
                 </Link>
               </li>
               <li>
-                <Link href="#catalog-section" className="hover:text-primary transition-colors">
+                <Link href="/#catalog-section" className="hover:text-primary transition-colors">
                   Kho Hàng Thông Minh
                 </Link>
               </li>
               <li>
-                <Link href="#tech-pipeline" className="hover:text-primary transition-colors">
+                <Link href="/#tech-pipeline" className="hover:text-primary transition-colors">
                   Kiến Trúc Microservice
                 </Link>
               </li>
               <li>
-                <Link href="/login" className="hover:text-primary transition-colors">
-                  Tài Khoản & Quản Lý Giỏ Hàng
+                <Link href="/profile" className="hover:text-primary transition-colors">
+                  Tài Khoản & Quản Lý Đơn Hàng
                 </Link>
               </li>
             </ul>
@@ -140,7 +140,7 @@ export function Footer() {
           </div>
         </div>
 
-        {/* Bottom Bar: Copyright & Compliance */}
+        {/* Bottom Bar */}
         <div className="pt-8 border-t border-border flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-muted-foreground">
           <p>
             © {new Date().getFullYear()} Visual AI Store. Bản quyền thuộc về kiến trúc sư giải pháp.
@@ -155,3 +155,4 @@ export function Footer() {
     </footer>
   );
 }
+

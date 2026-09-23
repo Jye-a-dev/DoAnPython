@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
@@ -84,7 +84,7 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="relative min-h-[calc(100vh-4rem)] flex items-center justify-center p-4 py-12 overflow-hidden bg-[#090A0F]">
+    <div className="relative min-h-[calc(100vh-4rem)] w-full flex items-center justify-center p-4 py-12 overflow-hidden bg-[#090A0F]">
       {/* 1. Ambient Lighting & Spotlights */}
       <AuthBackground />
 
@@ -117,3 +117,4 @@ export default function LoginPage() {
     </div>
   );
 }
+

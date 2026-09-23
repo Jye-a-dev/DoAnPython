@@ -47,6 +47,15 @@ const nextConfig = {
       },
     ];
   },
+  webpack: (config, { dev, isServer }) => {
+    if (dev && isServer) {
+      config.optimization = {
+        ...config.optimization,
+        splitChunks: false,
+      };
+    }
+    return config;
+  },
 };
 
 export default nextConfig;

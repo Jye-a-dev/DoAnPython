@@ -33,6 +33,8 @@ apiClient.interceptors.response.use(
   (error: AxiosError) => {
     if (error.response?.status === 401) {
       if (typeof window !== "undefined") {
+        document.cookie = "auth_token=; path=/; max-age=0; SameSite=Lax";
+        document.cookie = "auth_role=; path=/; max-age=0; SameSite=Lax";
         localStorage.removeItem("access_token");
         localStorage.removeItem("auth_user");
         window.dispatchEvent(new CustomEvent("auth:unauthorized"));

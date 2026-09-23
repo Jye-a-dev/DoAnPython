@@ -1,8 +1,21 @@
-﻿"use client";
+"use client";
 
 import { create } from "zustand";
 import { authService, LoginPayload } from "@/services/auth.service";
 import { User } from "@/types";
+
+function syncCookies(token: string | null, roleId?: number | null) {
+  if (typeof document === "undefined") return;
+  if (token) {
+    document.cookie = `auth_token=${token}; path=/; max-age=604800; SameSite=Lax`;
+    if (roleId !== undefined && roleId !== null) {
+      document.cookie = `auth_role=${roleId}; path=/; max-age=604800; SameSite=Lax`;
+    }
+  } else {
+    document.cookie = "auth_token=; path=/; max-age=0; SameSite=Lax";
+    document.cookie = "auth_role=; path=/; max-age=0; SameSite=Lax";
+  }
+}
 
 interface AuthState {
   token: string | null;
@@ -49,6 +62,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         }
       }
 
+      syncCookies(token, initialUser?.role_id);
+
       set({
         token,
         user: initialUser,
@@ -60,11 +75,12 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       try {
         await get().fetchMe();
       } catch {
-        // fetchMe failure handled inside fetchMe
+        // Handled inside fetchMe
       } finally {
         set({ isLoading: false });
       }
     } else {
+      syncCookies(null);
       set({
         token: null,
         user: null,
@@ -76,12 +92,27 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
     // Subscribe to global unauthorized broadcast
     window.addEventListener("auth:unauthorized", () => {
+      syncCookies(null);
+      localStorage.removeItem("access_token");
+      localStorage.removeItem("auth_user");
       set({
         token: null,
         user: null,
         isAuthenticated: false,
         isAdmin: false,
+        isLoading: false,
       });
+
+      if (typeof window !== "undefined") {
+        const path = window.location.pathname;
+        if (
+          path.startsWith("/admin") ||
+          path.startsWith("/profile") ||
+          path.startsWith("/orders")
+        ) {
+          window.location.href = `/login?redirect=${encodeURIComponent(path)}`;
+        }
+      }
     });
   },
 
@@ -90,6 +121,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       const response = await authService.getMe();
       const user = response.data;
       localStorage.setItem("auth_user", JSON.stringify(user));
+      const token = localStorage.getItem("access_token");
+      syncCookies(token, user.role_id);
       set({
         user,
         isAuthenticated: true,
@@ -99,6 +132,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     } catch {
       localStorage.removeItem("access_token");
       localStorage.removeItem("auth_user");
+      syncCookies(null);
       set({
         token: null,
         user: null,
@@ -124,6 +158,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       const { access_token, user } = response.data;
       localStorage.setItem("access_token", access_token);
       localStorage.setItem("auth_user", JSON.stringify(user));
+      syncCookies(access_token, user.role_id);
       set({
         token: access_token,
         user,
@@ -176,6 +211,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       const { access_token, user } = response.data;
       localStorage.setItem("access_token", access_token);
       localStorage.setItem("auth_user", JSON.stringify(user));
+      syncCookies(access_token, user.role_id);
       set({
         token: access_token,
         user,
@@ -197,6 +233,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       const { access_token, user } = response.data;
       localStorage.setItem("access_token", access_token);
       localStorage.setItem("auth_user", JSON.stringify(user));
+      syncCookies(access_token, user.role_id);
       set({
         token: access_token,
         user,
@@ -219,12 +256,25 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     } finally {
       localStorage.removeItem("access_token");
       localStorage.removeItem("auth_user");
+      syncCookies(null);
       set({
         token: null,
         user: null,
         isAuthenticated: false,
         isAdmin: false,
+        isLoading: false,
       });
+
+      if (typeof window !== "undefined") {
+        const path = window.location.pathname;
+        if (
+          path.startsWith("/admin") ||
+          path.startsWith("/profile") ||
+          path.startsWith("/orders")
+        ) {
+          window.location.href = "/login";
+        }
+      }
     }
   },
 }));

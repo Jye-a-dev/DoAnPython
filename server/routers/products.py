@@ -88,6 +88,23 @@ match_scan_model = ns_products.model("MatchScanRequest", {
 })
 
 
+def product_to_dict(p: Product) -> dict:
+    """Serializes a Product SQLModel instance into standard API dictionary."""
+    return {
+        "id": p.id,
+        "category_id": p.category_id,
+        "name": p.name,
+        "class_name": p.class_name,
+        "sku": p.sku,
+        "price": p.price,
+        "stock_quantity": p.stock_quantity,
+        "image_url": p.image_url,
+        "description": p.description,
+        "is_available": p.is_available,
+        "created_at": p.created_at.isoformat() if hasattr(p.created_at, "isoformat") else str(p.created_at)
+    }
+
+
 @ns_products.route("/count")
 class ProductCount(Resource):
     @ns_products.doc("count_products", description="Count available products in store")
@@ -169,23 +186,7 @@ class ProductMatchFromScan(Resource):
                 Product.is_available == True
             )
             matched_products = session.exec(stmt).all()
-
-            return [
-                {
-                    "id": p.id,
-                    "category_id": p.category_id,
-                    "name": p.name,
-                    "class_name": p.class_name,
-                    "sku": p.sku,
-                    "price": p.price,
-                    "stock_quantity": p.stock_quantity,
-                    "image_url": p.image_url,
-                    "description": p.description,
-                    "is_available": p.is_available,
-                    "created_at": p.created_at.isoformat() if hasattr(p.created_at, "isoformat") else str(p.created_at)
-                }
-                for p in matched_products
-            ], 200
+            return [product_to_dict(p) for p in matched_products], 200
 
 
 @ns_products.route("")
@@ -212,22 +213,7 @@ class ProductListCreate(Resource):
             stmt = stmt.order_by(Product.id.asc()).offset(skip).limit(limit)
 
             products = session.exec(stmt).all()
-            return [
-                {
-                    "id": p.id,
-                    "category_id": p.category_id,
-                    "name": p.name,
-                    "class_name": p.class_name,
-                    "sku": p.sku,
-                    "price": p.price,
-                    "stock_quantity": p.stock_quantity,
-                    "image_url": p.image_url,
-                    "description": p.description,
-                    "is_available": p.is_available,
-                    "created_at": p.created_at.isoformat() if hasattr(p.created_at, "isoformat") else str(p.created_at)
-                }
-                for p in products
-            ], 200
+            return [product_to_dict(p) for p in products], 200
 
     @ns_products.doc("create_product", security="Bearer", description="Create new product item")
     @ns_products.expect(product_create_model, validate=True)
@@ -266,19 +252,7 @@ class ProductListCreate(Resource):
             session.commit()
             session.refresh(product)
 
-            return {
-                "id": product.id,
-                "category_id": product.category_id,
-                "name": product.name,
-                "class_name": product.class_name,
-                "sku": product.sku,
-                "price": product.price,
-                "stock_quantity": product.stock_quantity,
-                "image_url": product.image_url,
-                "description": product.description,
-                "is_available": product.is_available,
-                "created_at": product.created_at.isoformat() if hasattr(product.created_at, "isoformat") else str(product.created_at)
-            }, 201
+            return product_to_dict(product), 201
 
 
 @ns_products.route("/<string:product_id>")
@@ -291,19 +265,7 @@ class ProductDetail(Resource):
             product = session.get(Product, product_id)
             if not product:
                 return {"detail": f"Product ID {product_id} not found."}, 404
-            return {
-                "id": product.id,
-                "category_id": product.category_id,
-                "name": product.name,
-                "class_name": product.class_name,
-                "sku": product.sku,
-                "price": product.price,
-                "stock_quantity": product.stock_quantity,
-                "image_url": product.image_url,
-                "description": product.description,
-                "is_available": product.is_available,
-                "created_at": product.created_at.isoformat() if hasattr(product.created_at, "isoformat") else str(product.created_at)
-            }, 200
+            return product_to_dict(product), 200
 
     @ns_products.doc("update_product", security="Bearer", description="Update product price, inventory, or info")
     @ns_products.expect(product_update_model, validate=True)
@@ -338,20 +300,7 @@ class ProductDetail(Resource):
 
             session.commit()
             session.refresh(product)
-
-            return {
-                "id": product.id,
-                "category_id": product.category_id,
-                "name": product.name,
-                "class_name": product.class_name,
-                "sku": product.sku,
-                "price": product.price,
-                "stock_quantity": product.stock_quantity,
-                "image_url": product.image_url,
-                "description": product.description,
-                "is_available": product.is_available,
-                "created_at": product.created_at.isoformat() if hasattr(product.created_at, "isoformat") else str(product.created_at)
-            }, 200
+            return product_to_dict(product), 200
 
     @ns_products.doc("patch_product", security="Bearer", description="Partially update product details")
     @ns_products.expect(product_patch_model, validate=False)
@@ -386,20 +335,7 @@ class ProductDetail(Resource):
 
             session.commit()
             session.refresh(product)
-
-            return {
-                "id": product.id,
-                "category_id": product.category_id,
-                "name": product.name,
-                "class_name": product.class_name,
-                "sku": product.sku,
-                "price": product.price,
-                "stock_quantity": product.stock_quantity,
-                "image_url": product.image_url,
-                "description": product.description,
-                "is_available": product.is_available,
-                "created_at": product.created_at.isoformat() if hasattr(product.created_at, "isoformat") else str(product.created_at)
-            }, 200
+            return product_to_dict(product), 200
 
     @ns_products.doc("delete_product", security="Bearer", description="Delete product from store")
     @ns_products.response(200, "Product deleted", message_model)
@@ -441,19 +377,7 @@ class ProductStockResource(Resource):
 
             session.commit()
             session.refresh(product)
-            return {
-                "id": product.id,
-                "category_id": product.category_id,
-                "name": product.name,
-                "class_name": product.class_name,
-                "sku": product.sku,
-                "price": product.price,
-                "stock_quantity": product.stock_quantity,
-                "image_url": product.image_url,
-                "description": product.description,
-                "is_available": product.is_available,
-                "created_at": product.created_at.isoformat() if hasattr(product.created_at, "isoformat") else str(product.created_at)
-            }, 200
+            return product_to_dict(product), 200
 
 
 @ns_products.route("/<string:product_id>/availability")
@@ -475,17 +399,4 @@ class ProductAvailabilityResource(Resource):
             product.is_available = is_avail
             session.commit()
             session.refresh(product)
-            return {
-                "id": product.id,
-                "category_id": product.category_id,
-                "name": product.name,
-                "class_name": product.class_name,
-                "sku": product.sku,
-                "price": product.price,
-                "stock_quantity": product.stock_quantity,
-                "image_url": product.image_url,
-                "description": product.description,
-                "is_available": product.is_available,
-                "created_at": product.created_at.isoformat() if hasattr(product.created_at, "isoformat") else str(product.created_at)
-            }, 200
-
+            return product_to_dict(product), 200
