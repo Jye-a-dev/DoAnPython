@@ -186,3 +186,4 @@ async def get_vlm_suggestion(
 
     # Tầng 2: Heuristic Geometric Fallback
     return _heuristic_geometric_refinement(image_path, box, raw_label, raw_label_vi)
+

@@ -142,3 +142,4 @@ export interface ExecutiveDailyBriefingResponse {
   };
   generated_at: string;
 }
+

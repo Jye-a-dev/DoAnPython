@@ -47,3 +47,4 @@ export const useAdminStore = create<AdminState>((set) => ({
   briefing: null,
   setBriefing: (briefing) => set({ briefing }),
 }));
+

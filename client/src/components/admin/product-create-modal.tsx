@@ -318,3 +318,4 @@ export function ProductCreateModal({ isOpen, onClose, onSuccess }: ProductCreate
     </Dialog>
   );
 }
+
