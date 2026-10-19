@@ -1,0 +1,11 @@
+__pycache__/
+*.py[cod]
+.venv/
+instance/
+*.db
+.env
+
+pipeline/.venv/
+pipeline/models_weights/
+pipeline/data/raw/
+pipeline/data/processed/
