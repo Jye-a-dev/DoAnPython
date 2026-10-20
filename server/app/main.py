@@ -29,7 +29,7 @@ from flask import Flask, redirect
 from flask_cors import CORS
 from flasgger import Swagger
 from app.core.config import Config
-from app.core.database import db
+from app.core.database import db, init_db
 from app.api.routes import api_bp
 
 
@@ -158,8 +158,7 @@ def create_app():
 
     Swagger(app, config=swagger_config, template=swagger_template)
 
-    with app.app_context():
-        db.create_all()
+    init_db(app)
 
     app.register_blueprint(api_bp)
 
