@@ -3,7 +3,8 @@ import httpx
 from dotenv import load_dotenv
 
 load_dotenv()
-SERVER_URL = os.getenv("FLASK_API_URL", "http://127.0.0.1:5000/api")
+SERVER_URL = os.getenv("FLASK_API_URL", "http://127.0.0.1:8000/api")
+
 
 def generate_flashcards(text: str):
     try:

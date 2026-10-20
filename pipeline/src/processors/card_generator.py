@@ -9,7 +9,10 @@ Public API:
 
 from __future__ import annotations
 
+import csv
+import json
 import logging
+import os
 import re
 import sys
 from pathlib import Path
@@ -172,7 +175,10 @@ class FlashcardPipeline:
         self._device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self._model.to(self._device)
         self._model.eval()
-        print(f"[✓] Model loaded successfully. Device: {self._device}")
+        try:
+            print(f"[OK] Model loaded successfully. Device: {self._device}")
+        except Exception:
+            pass
 
     # ------------------------------------------------------------------
     # Internal helpers
@@ -207,6 +213,35 @@ class FlashcardPipeline:
 
         return self._tokenizer.decode(output_ids[0], skip_special_tokens=True)
 
+    def _infer_batch(self, chunk_texts: list[str]) -> list[str]:
+        """Run batched model inference on multiple chunks and return decoded outputs."""
+        import torch
+
+        if not chunk_texts:
+            return []
+
+        prompts = [self._build_prompt(chunk) for chunk in chunk_texts]
+        inputs = self._tokenizer(
+            prompts,
+            return_tensors="pt",
+            padding=True,
+            truncation=True,
+            max_length=512,
+        ).to(self._device)
+
+        with torch.no_grad():
+            output_ids = self._model.generate(
+                **inputs,
+                max_new_tokens=128,
+                min_length=15,
+                do_sample=False,
+                num_beams=2,
+                repetition_penalty=1.2,
+                early_stopping=True,
+            )
+
+        return self._tokenizer.batch_decode(output_ids, skip_special_tokens=True)
+
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
@@ -233,23 +268,72 @@ class FlashcardPipeline:
         logger.debug("Raw model output:\n%s", raw)
         return parse_flashcard_output(raw)
 
+    def generate_from_chunks(
+        self,
+        chunks: list[str],
+        batch_size: int = 4,
+    ) -> list[dict[str, str]]:
+        """Generate flashcards from multiple text chunks using batch inference.
+
+        Args:
+            chunks: List of pre-cleaned text chunks.
+            batch_size: Number of chunks per inference batch (default: 4).
+
+        Returns:
+            Deduplicated list of parsed ``{"question": ..., "answer": ...}`` dicts.
+        """
+        if not chunks:
+            return []
+
+        all_cards: list[dict[str, str]] = []
+        seen_questions: set[str] = set()
+
+        for i in range(0, len(chunks), batch_size):
+            batch = chunks[i : i + batch_size]
+            raw_outputs = self._infer_batch(batch)
+            for raw in raw_outputs:
+                cards = parse_flashcard_output(raw)
+                for card in cards:
+                    key = card["question"].lower().strip()
+                    if key not in seen_questions:
+                        seen_questions.add(key)
+                        all_cards.append(card)
+
+        logger.info("Total flashcards generated from chunks: %d", len(all_cards))
+        return all_cards
+
     def generate_from_document(
         self,
         file_path: str,
         max_words_per_chunk: int = 150,
+        batch_size: int = 4,
     ) -> list[dict[str, str]]:
-        """End-to-end pipeline: load → clean → chunk → generate → aggregate.
+        """End-to-end pipeline: load -> clean -> chunk -> batch generate -> aggregate.
 
         Args:
             file_path:           Path to a ``.txt`` or ``.pdf`` source file.
             max_words_per_chunk: Maximum words per text chunk fed to the model
-                                 (default 150, ≈ 195 tokens — safe for Flan-T5's
-                                 512-token context window).
+                                 (default 150, approx 195 tokens - safe for Flan-T5).
+            batch_size:          Batch size for model inference (default 4).
 
         Returns:
             Deduplicated list of flashcard dicts across all chunks.
         """
-        from src.cleaners.text_cleaner import load_document, clean_text, chunk_text
+        try:
+            from ..cleaners.text_cleaner import load_document, clean_text, chunk_text
+        except (ImportError, ValueError):
+            try:
+                from src.cleaners.text_cleaner import (
+                    load_document,
+                    clean_text,
+                    chunk_text,
+                )
+            except ImportError:
+                from pipeline.src.cleaners.text_cleaner import (
+                    load_document,
+                    clean_text,
+                    chunk_text,
+                )
 
         logger.info("Loading document: %s", file_path)
         raw_text = load_document(file_path)
@@ -265,17 +349,59 @@ class FlashcardPipeline:
         if not chunks:
             return []
 
-        all_cards: list[dict[str, str]] = []
-        seen_questions: set[str] = set()
+        return self.generate_from_chunks(chunks, batch_size=batch_size)
 
-        for idx, chunk in enumerate(chunks, start=1):
-            logger.info("Processing chunk %d/%d…", idx, len(chunks))
-            cards = self.generate_from_chunk(chunk)
-            for card in cards:
-                key = card["question"].lower().strip()
-                if key not in seen_questions:
-                    seen_questions.add(key)
-                    all_cards.append(card)
+    @staticmethod
+    def export_to_file(
+        cards: list[dict[str, Any]],
+        output_path: str,
+        format: str = "json",
+    ) -> str:
+        """Export generated flashcards to a JSON or CSV file.
 
-        logger.info("Total flashcards generated: %d", len(all_cards))
-        return all_cards
+        Args:
+            cards: List of card dicts containing 'question' and 'answer'.
+            output_path: Destination file path.
+            format: Target format ('json' or 'csv'). Defaults to 'json'.
+
+        Returns:
+            Resolved absolute output path as a string.
+
+        Raises:
+            ValueError: If the requested format is not supported.
+        """
+        fmt = format.lower().strip()
+        if fmt not in ("json", "csv"):
+            raise ValueError(
+                f"Định dạng không hỗ trợ: '{format}'. Chỉ chấp nhận 'json' hoặc 'csv'."
+            )
+
+        resolved_path = os.path.abspath(output_path)
+        parent_dir = os.path.dirname(resolved_path)
+        if parent_dir:
+            os.makedirs(parent_dir, exist_ok=True)
+
+        if fmt == "json":
+            with open(resolved_path, "w", encoding="utf-8") as f:
+                json.dump(cards, f, ensure_ascii=False, indent=2)
+        elif fmt == "csv":
+            with open(resolved_path, "w", encoding="utf-8-sig", newline="") as f:
+                writer = csv.DictWriter(
+                    f,
+                    fieldnames=["id", "question", "answer"],
+                    extrasaction="ignore",
+                )
+                writer.writeheader()
+                for idx, card in enumerate(cards, start=1):
+                    writer.writerow(
+                        {
+                            "id": card.get("id", idx),
+                            "question": card.get("question", ""),
+                            "answer": card.get("answer", ""),
+                        }
+                    )
+
+        logger.info(
+            "Exported %d cards to %s (format=%s)", len(cards), resolved_path, fmt
+        )
+        return resolved_path
