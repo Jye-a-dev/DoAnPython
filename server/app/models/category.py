@@ -77,4 +77,3 @@ class Folder(db.Model):
             "description": self.description,
             "created_at": self.created_at.isoformat() if self.created_at else None,
         }
-

@@ -1,0 +1,12 @@
+{
+  "include": [
+    "app"
+  ],
+  "extraPaths": [
+    ".",
+    "app",
+    ".venv/Lib/site-packages",
+    "../pipeline"
+  ],
+  "reportMissingImports": "none"
+}

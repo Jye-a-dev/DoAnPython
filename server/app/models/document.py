@@ -82,3 +82,4 @@ class Document(db.Model):
         if include_blob and self.file_blob:
             data["file_blob_length"] = len(self.file_blob)
         return data
+

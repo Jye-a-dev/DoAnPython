@@ -1,23 +1,24 @@
 import hashlib
 import io
 import os
-from typing import Any
+from typing import Any, List, Optional
 import pypdf
 from app.core.database import db
 from app.models.document import Document
 
 
-def save_document_from_memory(user_id: int, file_storage: Any) -> Document:
+def process_and_save_document(user_id: int, file_storage: Any) -> Document:
     """
-    Đọc dữ liệu nhị phân trực tiếp từ RAM, bóc tách text (PDF/TXT)
-    và lưu trữ trực tiếp dưới dạng BLOB vào SQLite Database.
-    Tuyệt đối không lưu file vật lý hay ghi tạm vào thư mục cục bộ.
+    Xử lý và lưu trữ tài liệu hoàn toàn trong bộ nhớ RAM:
+    - Đọc binary từ file_storage.read().
+    - Tính hash SHA-256 (hashlib.sha256(file_bytes).hexdigest()) và kiểm tra chống trùng lặp.
+    - Đọc text trực tiếp từ io.BytesIO(file_bytes) bằng pypdf.PdfReader (nếu PDF) hoặc decode('utf-8', errors='ignore') (nếu TXT).
+    - Khởi tạo Document và lưu vào cột BLOB documents.file_blob. Tuyệt đối không ghi file cục bộ.
 
-    :param user_id: ID của người dùng sở hữu tài liệu
-    :param file_storage: Đối tượng FileStorage từ Flask request hoặc file-like object
-    :return: Đối tượng Document đã lưu vào cơ sở dữ liệu
+    :param user_id: ID người dùng sở hữu tài liệu
+    :param file_storage: FileStorage đối tượng upload từ Flask request hoặc file-like object
+    :return: Thực thể Document đã lưu trong cơ sở dữ liệu
     """
-    # 1. Đọc dữ liệu nhị phân trực tiếp từ RAM
     if hasattr(file_storage, "read"):
         file_bytes = file_storage.read()
     elif isinstance(file_storage, (bytes, bytearray)):
@@ -27,45 +28,69 @@ def save_document_from_memory(user_id: int, file_storage: Any) -> Document:
 
     filename = getattr(file_storage, "filename", None) or "document"
     ext = os.path.splitext(filename)[1].lower().lstrip(".")
+    if not ext:
+        ext = "txt"
     file_size = len(file_bytes)
 
-    # 2. Tạo mã băm SHA-256 để chống trùng lặp file trong DB
-    file_hash = hashlib.sha256(file_bytes).hexdigest()
-
-    # Kiểm tra xem file đã tồn tại trong DB chưa
-    existing_document = Document.query.filter_by(content_hash=file_hash).first()
+    # 1. Tính mã băm SHA-256 để chống trùng lặp file trong database
+    content_hash = hashlib.sha256(file_bytes).hexdigest()
+    existing_document = Document.query.filter_by(content_hash=content_hash).first()
     if existing_document:
         return existing_document
 
-    # 3. Dùng io.BytesIO(file_bytes) kết hợp pypdf để bóc tách văn bản trong RAM
+    # 2. Đọc text trực tiếp từ RAM qua io.BytesIO(file_bytes)
     extracted_text = ""
     if ext == "pdf":
         try:
             pdf_stream = io.BytesIO(file_bytes)
             reader = pypdf.PdfReader(pdf_stream)
-            page_texts = []
-            for page in reader.pages:
-                text = page.extract_text()
-                if text:
-                    page_texts.append(text.strip())
-            extracted_text = "\n\n".join(page_texts).strip()
+            page_texts = [p.extract_text() or "" for p in reader.pages]
+            extracted_text = "\n\n".join(
+                t.strip() for t in page_texts if t.strip()
+            ).strip()
         except Exception as exc:
             extracted_text = f"[PDF Extraction Error: {str(exc)}]"
     else:
-        # Mặc định coi là file văn bản thuần (TXT, MD, CSV, v.v.)
-        extracted_text = file_bytes.decode("utf-8", errors="replace").strip()
+        extracted_text = file_bytes.decode("utf-8", errors="ignore").strip()
 
-    # 4. Tạo và lưu đối tượng Document vào DB với file_blob=file_bytes
+    # 3. Khởi tạo Document và lưu thẳng vào cột BLOB mà không tạo file trung gian
     document = Document(
         user_id=user_id,
         filename=filename,
-        file_type=ext if ext else "bin",
+        file_type=ext,
         file_size_bytes=file_size,
-        content_hash=file_hash,
         file_blob=file_bytes,
         extracted_text=extracted_text,
+        content_hash=content_hash,
     )
     db.session.add(document)
     db.session.commit()
 
     return document
+
+
+# Tương thích ngược với các tên gọi cũ
+save_document_from_memory = process_and_save_document
+
+
+def get_document_by_id(doc_id: int) -> Optional[Document]:
+    """Truy vấn Document theo ID."""
+    return db.session.get(Document, doc_id)
+
+
+def list_documents(user_id: Optional[int] = None) -> List[Document]:
+    """Lấy danh sách Document, hỗ trợ lọc theo user_id."""
+    query = Document.query
+    if user_id is not None:
+        query = query.filter_by(user_id=user_id)
+    return query.order_by(Document.created_at.desc()).all()
+
+
+def delete_document(doc_id: int) -> bool:
+    """Xóa Document khỏi cơ sở dữ liệu."""
+    doc = db.session.get(Document, doc_id)
+    if not doc:
+        return False
+    db.session.delete(doc)
+    db.session.commit()
+    return True

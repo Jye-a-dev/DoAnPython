@@ -1,7 +1,7 @@
 from datetime import datetime
 from app.core.database import db
 
-# Bảng liên kết nhiều - nhiều giữa Card và Tag
+# Bảng phụ nhiều - nhiều giữa Card và Tag
 card_tags = db.Table(
     "card_tags",
     db.Column(
@@ -71,7 +71,7 @@ class Deck(db.Model):
             "title": self.title,
             "description": self.description,
             "is_public": self.is_public,
-            "card_count": len(self.cards) if isinstance(self.cards, list) else 0,
+            "card_count": len(self.cards) if self.cards else 0,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
         }
@@ -96,6 +96,7 @@ class Card(db.Model):
     question = db.Column(db.Text, nullable=False)
     answer = db.Column(db.Text, nullable=False)
     explanation = db.Column(db.Text, nullable=True)
+    difficulty = db.Column(db.String(20), default="medium", nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
     updated_at = db.Column(
         db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False
@@ -111,6 +112,22 @@ class Card(db.Model):
         "UserFavorite", back_populates="card", cascade="all, delete-orphan"
     )
 
+    @property
+    def front(self) -> str:
+        return self.question
+
+    @front.setter
+    def front(self, value: str):
+        self.question = value
+
+    @property
+    def back(self) -> str:
+        return self.answer
+
+    @back.setter
+    def back(self, value: str):
+        self.answer = value
+
     def __init__(
         self,
         question: str = "",
@@ -118,14 +135,18 @@ class Card(db.Model):
         deck_id: int | None = None,
         document_id: int | None = None,
         explanation: str | None = None,
+        difficulty: str = "medium",
+        front: str | None = None,
+        back: str | None = None,
         **kwargs,
     ):
         super().__init__(**kwargs)
-        self.question = question
-        self.answer = answer
+        self.question = front if front is not None else question
+        self.answer = back if back is not None else answer
         self.deck_id = deck_id
         self.document_id = document_id
         self.explanation = explanation
+        self.difficulty = difficulty
 
     def to_dict(self):
         return {
@@ -134,13 +155,17 @@ class Card(db.Model):
             "document_id": self.document_id,
             "question": self.question,
             "answer": self.answer,
+            "front": self.question,
+            "back": self.answer,
             "explanation": self.explanation,
+            "difficulty": self.difficulty,
+            "tags": [t.name for t in self.tags] if self.tags else [],
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
         }
 
 
-# Tương thích ngược với các endpoint cũ
+# Tương thích ngược với các module sử dụng tên Flashcard
 Flashcard = Card
 
 
@@ -154,7 +179,7 @@ class Tag(db.Model):
         nullable=True,
         index=True,
     )
-    name = db.Column(db.String(50), nullable=False)
+    name = db.Column(db.String(50), unique=True, nullable=False, index=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
 
     user = db.relationship("User", back_populates="tags")

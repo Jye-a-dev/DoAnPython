@@ -9,6 +9,7 @@ class User(db.Model):
     username = db.Column(db.String(80), unique=True, nullable=False, index=True)
     email = db.Column(db.String(120), unique=True, nullable=False, index=True)
     password_hash = db.Column(db.String(255), nullable=False)
+    role = db.Column(db.String(50), default="user", nullable=False)
     is_active = db.Column(db.Boolean, default=True, nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
     updated_at = db.Column(
@@ -51,6 +52,7 @@ class User(db.Model):
             "id": self.id,
             "username": self.username,
             "email": self.email,
+            "role": self.role,
             "is_active": self.is_active,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
@@ -68,10 +70,12 @@ class UserProfile(db.Model):
         nullable=False,
         index=True,
     )
+    display_name = db.Column(db.String(120), nullable=True)
     full_name = db.Column(db.String(120), nullable=True)
     avatar_url = db.Column(db.String(255), nullable=True)
     bio = db.Column(db.Text, nullable=True)
     timezone = db.Column(db.String(50), default="UTC", nullable=False)
+    daily_card_goal = db.Column(db.Integer, default=20, nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
     updated_at = db.Column(
         db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False
@@ -83,11 +87,12 @@ class UserProfile(db.Model):
         return {
             "id": self.id,
             "user_id": self.user_id,
+            "display_name": self.display_name or self.full_name,
             "full_name": self.full_name,
             "avatar_url": self.avatar_url,
             "bio": self.bio,
             "timezone": self.timezone,
+            "daily_card_goal": self.daily_card_goal,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
         }
-

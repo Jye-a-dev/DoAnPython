@@ -30,7 +30,14 @@ from flask_cors import CORS
 from flasgger import Swagger
 from app.core.config import Config
 from app.core.database import db, init_db
-from app.api.routes import api_bp
+from app.api import (
+    documents_bp,
+    generator_bp,
+    decks_bp,
+    cards_bp,
+    study_bp,
+    system_bp,
+)
 
 
 def create_app():
@@ -76,91 +83,44 @@ def create_app():
         "schemes": ["http"],
         "tags": [
             {
-                "name": "Flashcards",
-                "description": "Quản lý dữ liệu thẻ ghi nhớ (Flashcards)",
+                "name": "Documents",
+                "description": "Quản lý và upload tài liệu in-memory BLOB (PDF/TXT)",
             },
             {
-                "name": "AI Pipeline",
+                "name": "AI Generator",
                 "description": "Tiến trình sinh câu hỏi tự động với AI Flan-T5",
+            },
+            {
+                "name": "Decks",
+                "description": "Quản lý bộ thẻ ghi nhớ (Decks)",
+            },
+            {
+                "name": "Cards",
+                "description": "Quản lý thẻ flashcards",
+            },
+            {
+                "name": "Study",
+                "description": "Phiên học và đánh giá Spaced Repetition (SM-2)",
             },
             {
                 "name": "System",
                 "description": "Kiểm tra tình trạng hoạt động của dịch vụ",
             },
         ],
-        "definitions": {
-            "Flashcard": {
-                "type": "object",
-                "properties": {
-                    "id": {"type": "integer", "example": 1},
-                    "question": {
-                        "type": "string",
-                        "example": "Thủ đô của Việt Nam là thành phố nào?",
-                    },
-                    "answer": {
-                        "type": "string",
-                        "example": "Hà Nội",
-                    },
-                },
-            },
-            "GenerateRequest": {
-                "type": "object",
-                "required": ["text"],
-                "properties": {
-                    "text": {
-                        "type": "string",
-                        "example": (
-                            "Hà Nội là thủ đô của nước Cộng hòa Xã hội chủ nghĩa Việt Nam, "
-                            "đồng thời là thành phố lớn nhất Việt Nam về diện tích với 3.359,82 km2."
-                        ),
-                        "description": "Nội dung bài học hoặc tài liệu cần trích xuất câu hỏi flashcards",
-                    }
-                },
-            },
-            "GenerateResponse": {
-                "type": "object",
-                "properties": {
-                    "count": {"type": "integer", "example": 1},
-                    "cards": {
-                        "type": "array",
-                        "items": {"$ref": "#/definitions/Flashcard"},
-                    },
-                },
-            },
-            "ErrorResponse": {
-                "type": "object",
-                "properties": {
-                    "error": {
-                        "type": "string",
-                        "example": "Văn bản bài học không được để trống",
-                    }
-                },
-            },
-            "MessageResponse": {
-                "type": "object",
-                "properties": {
-                    "message": {
-                        "type": "string",
-                        "example": "Đã xóa flashcard thành công",
-                    }
-                },
-            },
-            "HealthResponse": {
-                "type": "object",
-                "properties": {
-                    "status": {"type": "string", "example": "healthy"},
-                    "database": {"type": "string", "example": "connected"},
-                    "ai_pipeline": {"type": "string", "example": "ready"},
-                },
-            },
-        },
     }
 
     Swagger(app, config=swagger_config, template=swagger_template)
 
+    # Khởi tạo và đồng bộ schema cơ sở dữ liệu
     init_db(app)
 
-    app.register_blueprint(api_bp)
+    # Đăng ký toàn bộ Blueprints theo Layered Architecture
+    app.register_blueprint(documents_bp)
+    app.register_blueprint(generator_bp)
+    app.register_blueprint(decks_bp)
+    app.register_blueprint(cards_bp)
+    app.register_blueprint(study_bp)
+    app.register_blueprint(system_bp)
 
     @app.route("/")
     def index():
@@ -175,12 +135,13 @@ def create_app():
 
 
 if __name__ == "__main__":
-    port = int(os.getenv("PORT", 8000))
+    port = int(os.getenv("PORT", 3000))
+    host = os.getenv("HOST", "0.0.0.0")
     app = create_app()
     print("=" * 60)
-    print("✨ Flashcard AI Pipeline Server")
+    print("✨ Flashcard Backend Server")
     print(f"🚀 Running on: http://127.0.0.1:{port}")
     print(f"📖 Swagger Docs: http://127.0.0.1:{port}/docs/")
     print(f"⚙️  API Endpoint: http://127.0.0.1:{port}/api")
     print("=" * 60)
-    app.run(host="0.0.0.0", port=port, debug=True)
+    app.run(host=host, port=port, debug=True)

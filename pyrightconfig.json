@@ -1,14 +1,37 @@
 {
-  "include": [
-    "server",
-    "pipeline"
+  "executionEnvironments": [
+    {
+      "root": "pipeline",
+      "extraPaths": [
+        "pipeline",
+        "pipeline/src",
+        "pipeline/.venv/Lib/site-packages"
+      ]
+    },
+    {
+      "root": "server",
+      "extraPaths": [
+        "server",
+        "server/app",
+        "server/.venv/Lib/site-packages",
+        "pipeline"
+      ]
+    },
+    {
+      "root": "client",
+      "extraPaths": [
+        "client"
+      ]
+    }
   ],
   "extraPaths": [
     ".",
-    "server",
     "pipeline",
-    "server/.venv/Lib/site-packages",
-    "pipeline/.venv/Lib/site-packages"
+    "pipeline/src",
+    "pipeline/.venv/Lib/site-packages",
+    "server",
+    "server/app",
+    "server/.venv/Lib/site-packages"
   ],
   "reportMissingImports": "none"
 }

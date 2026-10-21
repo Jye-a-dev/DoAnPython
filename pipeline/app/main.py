@@ -13,18 +13,21 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+# ---------------------------------------------------------------------------
+# Path setup & Virtualenv resolution
+# ---------------------------------------------------------------------------
+_APP_DIR = Path(__file__).resolve().parent  # pipeline/app
+_PIPELINE_DIR = _APP_DIR.parent  # pipeline/
+_VENV_SITE_PACKAGES = _PIPELINE_DIR / ".venv" / "Lib" / "site-packages"
+
+for _p in [str(_PIPELINE_DIR), str(_APP_DIR), str(_VENV_SITE_PACKAGES)]:
+    if os.path.exists(_p) and _p not in sys.path:
+        sys.path.insert(0, _p)
+
 from dotenv import load_dotenv
 from fastapi import FastAPI, File, HTTPException, Query, UploadFile, status
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
-
-# ---------------------------------------------------------------------------
-# Path setup & Environment configuration
-# ---------------------------------------------------------------------------
-_APP_DIR = Path(__file__).resolve().parent  # pipeline/app
-_PIPELINE_DIR = _APP_DIR.parent  # pipeline/
-if str(_PIPELINE_DIR) not in sys.path:
-    sys.path.insert(0, str(_PIPELINE_DIR))
 
 # Load .env file from pipeline directory
 load_dotenv(_PIPELINE_DIR / ".env")
@@ -69,7 +72,11 @@ def get_audio_transcriber():
     if _audio_transcriber is None:
         from src.processors.audio_transcriber import AudioTranscriber
 
-        logger.info("Initializing Whisper model (size=%s, device=%s)...", WHISPER_MODEL_SIZE, DEVICE)
+        logger.info(
+            "Initializing Whisper model (size=%s, device=%s)...",
+            WHISPER_MODEL_SIZE,
+            DEVICE,
+        )
         _audio_transcriber = AudioTranscriber(
             model_size=WHISPER_MODEL_SIZE,
             device=DEVICE,
@@ -82,7 +89,11 @@ def get_audio_transcriber():
 # ---------------------------------------------------------------------------
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    logger.info("Starting AI Pipeline Microservice on %s:%s", os.getenv("HOST", "0.0.0.0"), os.getenv("PORT", "8000"))
+    logger.info(
+        "Starting AI Pipeline Microservice on %s:%s",
+        os.getenv("HOST", "0.0.0.0"),
+        os.getenv("PORT", "8000"),
+    )
     logger.info("Verifying model path: %s", FLAN_T5_MODEL_PATH)
     yield
     logger.info("Shutting down AI Pipeline Microservice.")
@@ -114,7 +125,9 @@ DEFAULT_MAX_WORDS_PER_CHUNK = 150
 
 
 class GenerateRequest(BaseModel):
-    text: str = Field(..., min_length=1, description="Văn bản bài học cần sinh câu hỏi và đáp án")
+    text: str = Field(
+        ..., min_length=1, description="Văn bản bài học cần sinh câu hỏi và đáp án"
+    )
     max_words_per_chunk: Optional[int] = Field(
         default=DEFAULT_MAX_WORDS_PER_CHUNK,
         ge=50,
@@ -195,7 +208,9 @@ async def generate_flashcards(payload: GenerateRequest) -> List[Dict[str, str]]:
 )
 async def transcribe_audio(
     file: UploadFile = File(..., description="File âm thanh (.mp3, .wav, .m4a)"),
-    language: Optional[str] = Query(default="vi", description="Mã ngôn ngữ (mặc định: 'vi')"),
+    language: Optional[str] = Query(
+        default="vi", description="Mã ngôn ngữ (mặc định: 'vi')"
+    ),
 ) -> Dict[str, Any]:
     """
     Tiếp nhận file âm thanh qua multipart/form-data.
@@ -253,7 +268,11 @@ async def health_check() -> Dict[str, Any]:
         flan_status = "model_weights_missing"
 
     # Whisper check
-    whisper_status = "ready" if (_audio_transcriber is not None and _audio_transcriber.is_loaded()) else "available"
+    whisper_status = (
+        "ready"
+        if (_audio_transcriber is not None and _audio_transcriber.is_loaded())
+        else "available"
+    )
 
     return {
         "status": "healthy",
@@ -271,7 +290,8 @@ async def health_check() -> Dict[str, Any]:
                     "model_size": WHISPER_MODEL_SIZE,
                     "device": DEVICE,
                     "loaded_in_memory": (
-                        _audio_transcriber is not None and _audio_transcriber.is_loaded()
+                        _audio_transcriber is not None
+                        and _audio_transcriber.is_loaded()
                     ),
                 },
             },
@@ -286,4 +306,3 @@ if __name__ == "__main__":
     host = os.getenv("HOST", "0.0.0.0")
     print(f"Starting AI Pipeline on http://{host}:{port}")
     uvicorn.run("app.main:app", host=host, port=port, reload=False)
-

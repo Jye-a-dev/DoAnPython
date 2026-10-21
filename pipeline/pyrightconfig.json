@@ -1,0 +1,14 @@
+{
+  "include": [
+    "app",
+    "src"
+  ],
+  "extraPaths": [
+    ".",
+    "app",
+    "src",
+    ".venv/Lib/site-packages"
+  ],
+  "reportMissingImports": "none"
+}
+

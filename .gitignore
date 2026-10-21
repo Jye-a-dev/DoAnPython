@@ -1,11 +1,29 @@
-__pycache__/
+# Byte-compiled / optimized / cache files
+.pytest_cache/
+**/__pycache__/
 *.py[cod]
-.venv/
-instance/
-*.db
-.env
 
+# Virtual environments
+.venv/
+*/.venv/
+
+# Database & runtime instances
+instance/
+server/instance/
+*.db
+*.sqlite3
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# Pipeline model weights & large dataset artifacts
 pipeline/.venv/
 pipeline/models_weights/
 pipeline/data/raw/
 pipeline/data/processed/
+
+# IDE configurations
+.vscode/
+.idea/
