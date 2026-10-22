@@ -6,9 +6,11 @@ Completely decoupled from database operations and business logic CRUD.
 
 from __future__ import annotations
 
+import io
 import logging
 import os
 import sys
+import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -128,6 +130,12 @@ class GenerateRequest(BaseModel):
     text: str = Field(
         ..., min_length=1, description="Văn bản bài học cần sinh câu hỏi và đáp án"
     )
+    max_cards: Optional[int] = Field(
+        default=5,
+        ge=1,
+        le=100,
+        description="Số lượng thẻ tối đa cần sinh",
+    )
     max_words_per_chunk: Optional[int] = Field(
         default=DEFAULT_MAX_WORDS_PER_CHUNK,
         ge=50,
@@ -139,6 +147,12 @@ class GenerateRequest(BaseModel):
 class QAPair(BaseModel):
     question: str
     answer: str
+
+
+class GenerateResponse(BaseModel):
+    count: int
+    cards: List[QAPair]
+    inference_time_seconds: float
 
 
 class TranscribeResponse(BaseModel):
@@ -158,18 +172,23 @@ class HealthResponse(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# AI Endpoints
+# AI Endpoints (pi. prefix)
 # ---------------------------------------------------------------------------
 @app.post(
-    "/api/generate",
-    response_model=List[QAPair],
+    "/api/pi/generate",
+    response_model=GenerateResponse,
     summary="Sinh thẻ Flashcard Q&A từ bài học",
     status_code=status.HTTP_200_OK,
 )
-async def generate_flashcards(payload: GenerateRequest) -> List[Dict[str, str]]:
+@app.post(
+    "/api/generate",
+    response_model=GenerateResponse,
+    include_in_schema=False,
+)
+async def pi_generate_flashcards(payload: GenerateRequest) -> Dict[str, Any]:
     """
     Tiếp nhận văn bản bài học -> Tiền xử lý, chia chunk -> Chạy mô hình offline Flan-T5 ->
-    Trả về danh sách các cặp câu hỏi - câu trả lời: [{"question": "...", "answer": "..."}].
+    Trả về: {"count": N, "cards": [{"question": "...", "answer": "..."}], "inference_time_seconds": 1.25}.
     """
     cleaned_input = payload.text.strip()
     if not cleaned_input:
@@ -178,6 +197,7 @@ async def generate_flashcards(payload: GenerateRequest) -> List[Dict[str, str]]:
             detail="Nội dung văn bản không được để trống.",
         )
 
+    start_time = time.perf_counter()
     try:
         from src.cleaners.text_cleaner import clean_text, chunk_text
 
@@ -191,7 +211,16 @@ async def generate_flashcards(payload: GenerateRequest) -> List[Dict[str, str]]:
 
         pipeline = get_card_pipeline()
         cards: List[Dict[str, str]] = pipeline.generate_from_chunks(chunks)
-        return cards
+
+        if payload.max_cards and payload.max_cards > 0:
+            cards = cards[: payload.max_cards]
+
+        inference_time = round(time.perf_counter() - start_time, 2)
+        return {
+            "count": len(cards),
+            "cards": cards,
+            "inference_time_seconds": inference_time,
+        }
     except Exception as exc:
         logger.exception("Error during flashcard generation: %s", exc)
         raise HTTPException(
@@ -201,12 +230,17 @@ async def generate_flashcards(payload: GenerateRequest) -> List[Dict[str, str]]:
 
 
 @app.post(
-    "/api/transcribe",
+    "/api/pi/transcribe",
     response_model=TranscribeResponse,
     summary="Bóc băng âm thanh sang văn bản (Speech-to-Text)",
     status_code=status.HTTP_200_OK,
 )
-async def transcribe_audio(
+@app.post(
+    "/api/transcribe",
+    response_model=TranscribeResponse,
+    include_in_schema=False,
+)
+async def pi_transcribe_audio(
     file: UploadFile = File(..., description="File âm thanh (.mp3, .wav, .m4a)"),
     language: Optional[str] = Query(
         default="vi", description="Mã ngôn ngữ (mặc định: 'vi')"
@@ -214,8 +248,8 @@ async def transcribe_audio(
 ) -> Dict[str, Any]:
     """
     Tiếp nhận file âm thanh qua multipart/form-data.
-    Đọc trực tiếp stream dữ liệu vào bộ nhớ RAM, chạy mô hình Whisper offline,
-    và trả về văn bản bóc băng cùng các metadata liên quan.
+    Đọc trực tiếp binary từ RAM qua io.BytesIO, gọi mô hình Whisper offline,
+    và trả về: {"text": "...", "language": "vi", "duration_seconds": 12.5}.
     """
     allowed_extensions = {".mp3", ".wav", ".m4a", ".ogg", ".flac", ".aac"}
     filename = file.filename or "audio.wav"
@@ -235,13 +269,18 @@ async def transcribe_audio(
                 detail="File âm thanh rỗng (0 bytes).",
             )
 
+        audio_stream = io.BytesIO(file_bytes)
         transcriber = get_audio_transcriber()
         result = transcriber.transcribe(
-            audio_data=file_bytes,
+            audio_data=audio_stream,
             filename=filename,
             language=language,
         )
-        return result
+        return {
+            "text": result.get("text", ""),
+            "language": result.get("language", language or "vi"),
+            "duration_seconds": result.get("duration_seconds", 0.0),
+        }
     except HTTPException:
         raise
     except Exception as exc:
@@ -253,12 +292,17 @@ async def transcribe_audio(
 
 
 @app.get(
-    "/api/health",
+    "/api/pi/health",
     response_model=HealthResponse,
     summary="Kiểm tra trạng thái sẵn sàng của AI Microservice & các model",
     status_code=status.HTTP_200_OK,
 )
-async def health_check() -> Dict[str, Any]:
+@app.get(
+    "/api/health",
+    response_model=HealthResponse,
+    include_in_schema=False,
+)
+async def pi_check_health() -> Dict[str, Any]:
     """
     Kiểm tra tình trạng hoạt động của service và nạp trọng số 2 model (Flan-T5 & Whisper).
     """
@@ -299,10 +343,12 @@ async def health_check() -> Dict[str, Any]:
     }
 
 
+
 if __name__ == "__main__":
     import uvicorn
 
     port = int(os.getenv("PORT", 8000))
     host = os.getenv("HOST", "0.0.0.0")
     print(f"Starting AI Pipeline on http://{host}:{port}")
-    uvicorn.run("app.main:app", host=host, port=port, reload=False)
+    app_target = "pipeline.app.main:app" if Path("pipeline").exists() else "app.main:app"
+    uvicorn.run(app_target, host=host, port=port, reload=False)

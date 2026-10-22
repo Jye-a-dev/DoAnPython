@@ -115,3 +115,21 @@ def init_db(app):
                     raw_conn.close()
 
         db.create_all()
+
+        # Đảm bảo User mặc định (id=1) luôn tồn tại cho kịch bản kiểm thử & phát triển
+        try:
+            from app.models.user import User
+
+            if not db.session.get(User, 1):
+                default_user = User(
+                    id=1,
+                    username="default_user",
+                    email="user@flashcard.ai",
+                    password_hash="dev_hash",
+                    role="user",
+                    is_active=True,
+                )
+                db.session.add(default_user)
+                db.session.commit()
+        except Exception:
+            db.session.rollback()

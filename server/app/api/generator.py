@@ -170,7 +170,7 @@ def transcribe_audio_endpoint():
         type: string
         required: false
         default: vi
-        description: Mã ngôn ngữ (mặc định: vi)
+        description: "Mã ngôn ngữ (mặc định: vi)"
     responses:
       200:
         description: Bóc băng thành công
@@ -199,5 +199,3 @@ def transcribe_audio_endpoint():
         return jsonify(result), 200
     except Exception as exc:
         return jsonify({"error": f"Lỗi bóc băng âm thanh: {str(exc)}"}), 500
-
-

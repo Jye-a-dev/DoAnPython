@@ -1,16 +1,17 @@
-from app.api.documents import documents_bp
-from app.api.generator import generator_bp
-from app.api.decks import decks_bp
-from app.api.cards import cards_bp
-from app.api.study import study_bp
-from app.api.system import system_bp
+from app.api.routes import (
+    cards_bp,
+    decks_bp,
+    documents_bp,
+    generator_bp,
+    study_bp,
+    system_bp,
+)
 
 __all__ = [
+    "cards_bp",
+    "decks_bp",
     "documents_bp",
     "generator_bp",
-    "decks_bp",
-    "cards_bp",
     "study_bp",
     "system_bp",
 ]
-

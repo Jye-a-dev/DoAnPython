@@ -155,6 +155,20 @@ def delete_card(card_id: int) -> bool:
     return True
 
 
+def delete_all_cards(deck_id: Optional[int] = None) -> int:
+    """Xóa toàn bộ flashcards (hoặc theo deck_id)."""
+    query = Card.query
+    if deck_id is not None:
+        query = query.filter_by(deck_id=deck_id)
+    cards = query.all()
+    count = len(cards)
+    for c in cards:
+        db.session.delete(c)
+    db.session.commit()
+    return count
+
+
+
 # ==============================================================================
 # TAG SERVICES
 # ==============================================================================

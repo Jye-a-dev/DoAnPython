@@ -48,10 +48,14 @@ def _post_multipart(
 ) -> Any:
     boundary = "----AIServiceBoundary7MA4YWxkTrZu0gW"
     body = (
-        f"--{boundary}\r\n"
-        f'Content-Disposition: form-data; name="file"; filename="{filename}"\r\n'
-        "Content-Type: application/octet-stream\r\n\r\n"
-    ).encode("utf-8") + file_bytes + f"\r\n--{boundary}--\r\n".encode("ascii")
+        (
+            f"--{boundary}\r\n"
+            f'Content-Disposition: form-data; name="file"; filename="{filename}"\r\n'
+            "Content-Type: application/octet-stream\r\n\r\n"
+        ).encode("utf-8")
+        + file_bytes
+        + f"\r\n--{boundary}--\r\n".encode("ascii")
+    )
     request = Request(
         f"{url}?{urlencode({'language': language})}",
         data=body,
@@ -77,40 +81,47 @@ def get_pipeline():
 
 def generate_flashcards_service(text: str) -> List[Dict[str, str]]:
     """
-    Send lesson text to AI Pipeline Microservice (POST /api/generate)
+    Send lesson text to AI Pipeline Microservice (POST /api/pi/generate)
     and return parsed Q&A pairs.
     """
     if not text or not text.strip():
         return []
 
-    target_url = f"{AI_PIPELINE_URL}/generate"
-    try:
-        data = _post_json(
-            target_url,
-            {"text": text.strip(), "max_words_per_chunk": 150},
-            timeout=120.0,
-        )
-        if isinstance(data, list):
-            return data
-        if isinstance(data, dict) and "cards" in data:
-            return data["cards"]
-        return []
-    except (URLError, HTTPError, TimeoutError, OSError) as exc:
-        logger.warning(
-            "AI Pipeline unreachable at %s (%s). Attempting local fallback if available.",
-            target_url,
-            exc,
-        )
-        pipeline = get_pipeline()
-        if pipeline:
-            from pipeline.src.cleaners.text_cleaner import clean_text, chunk_text
+    candidate_urls = [
+        f"{AI_PIPELINE_URL}/pi/generate",
+        f"{AI_PIPELINE_URL}/generate",
+    ]
+    last_exc = None
+    for target_url in candidate_urls:
+        try:
+            data = _post_json(
+                target_url,
+                {"text": text.strip(), "max_words_per_chunk": 150},
+                timeout=120.0,
+            )
+            if isinstance(data, list):
+                return data
+            if isinstance(data, dict) and "cards" in data:
+                return data["cards"]
+            return []
+        except (URLError, HTTPError, TimeoutError, OSError) as exc:
+            last_exc = exc
+            continue
 
-            cleaned = clean_text(text)
-            chunks = chunk_text(cleaned, max_words=150)
-            return pipeline.generate_from_chunks(chunks) if chunks else []
-        raise RuntimeError(
-            f"Lỗi kết nối tới AI Pipeline Microservice (Port 8000): {str(exc)}"
-        ) from exc
+    logger.warning(
+        "AI Pipeline unreachable at candidate endpoints (%s). Attempting local fallback if available.",
+        last_exc,
+    )
+    pipeline = get_pipeline()
+    if pipeline:
+        from pipeline.src.cleaners.text_cleaner import clean_text, chunk_text
+
+        cleaned = clean_text(text)
+        chunks = chunk_text(cleaned, max_words=150)
+        return pipeline.generate_from_chunks(chunks) if chunks else []
+    raise RuntimeError(
+        f"Lỗi kết nối tới AI Pipeline Microservice (Port 8000): {str(last_exc)}"
+    ) from last_exc
 
 
 def transcribe_audio_service(
@@ -119,24 +130,51 @@ def transcribe_audio_service(
     language: str = "vi",
 ) -> Dict[str, Any]:
     """
-    Forward uploaded audio bytes to AI Pipeline Microservice (POST /api/transcribe)
+    Forward uploaded audio bytes to AI Pipeline Microservice (POST /api/pi/transcribe)
     via multipart/form-data.
     """
     if not file_bytes:
         raise ValueError("Audio binary payload is empty.")
 
-    target_url = f"{AI_PIPELINE_URL}/transcribe"
-    try:
-        return _post_multipart(
-            target_url, filename, file_bytes, language, timeout=180.0
-        )
-    except (URLError, HTTPError, TimeoutError, OSError) as exc:
-        logger.error(
-            "Failed to connect to AI Pipeline transcribe at %s: %s", target_url, exc
-        )
-        raise RuntimeError(
-            f"Lỗi kết nối tới AI Pipeline Microservice (Port 8000): {str(exc)}"
-        ) from exc
+    candidate_urls = [
+        f"{AI_PIPELINE_URL}/pi/transcribe",
+        f"{AI_PIPELINE_URL}/transcribe",
+    ]
+    last_exc = None
+    for target_url in candidate_urls:
+        try:
+            return _post_multipart(
+                target_url, filename, file_bytes, language, timeout=180.0
+            )
+        except (URLError, HTTPError, TimeoutError, OSError) as exc:
+            last_exc = exc
+            continue
+
+    logger.error("Failed to connect to AI Pipeline transcribe endpoints: %s", last_exc)
+    raise RuntimeError(
+        f"Lỗi kết nối tới AI Pipeline Microservice (Port 8000): {str(last_exc)}"
+    ) from last_exc
+
+
+def check_pipeline_health_service(timeout: float = 3.0) -> Dict[str, Any]:
+    """Ping healthcheck endpoint của AI Pipeline Microservice (GET /api/pi/health)."""
+    candidate_urls = [
+        f"{AI_PIPELINE_URL}/pi/health",
+        f"{AI_PIPELINE_URL}/health",
+    ]
+    for url in candidate_urls:
+        try:
+            req = Request(
+                url, headers={"User-Agent": "Backend-HealthCheck"}, method="GET"
+            )
+            with urlopen(req, timeout=timeout) as response:
+                return json.loads(response.read().decode("utf-8"))
+        except Exception:
+            continue
+    return {
+        "status": "unreachable",
+        "error": "AI Pipeline microservice is not responding",
+    }
 
 
 def generate_cards_from_document_id(

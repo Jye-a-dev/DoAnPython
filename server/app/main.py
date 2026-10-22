@@ -11,14 +11,15 @@ if sys.platform == "win32":
     if callable(stderr_reconfigure):
         stderr_reconfigure(encoding="utf-8", errors="replace")
 
-# Configure sys.path so 'app' and 'pipeline' can be imported regardless of execution cwd
+# Configure sys.path so 'app' (from server) and 'pipeline' can be imported regardless of execution cwd
 _SERVER_DIR = Path(__file__).resolve().parent.parent  # server/
 _PROJECT_ROOT = _SERVER_DIR.parent  # workspace root
 _PIPELINE_DIR = _PROJECT_ROOT / "pipeline"
 
-for _path in [str(_SERVER_DIR), str(_PROJECT_ROOT), str(_PIPELINE_DIR)]:
-    if _path not in sys.path:
-        sys.path.insert(0, _path)
+for _path in [str(_PIPELINE_DIR), str(_PROJECT_ROOT), str(_SERVER_DIR)]:
+    if _path in sys.path:
+        sys.path.remove(_path)
+    sys.path.insert(0, _path)
 
 # Fallback: include virtualenv site-packages if available
 _SERVER_VENV = _SERVER_DIR / ".venv" / "Lib" / "site-packages"

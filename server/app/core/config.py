@@ -22,6 +22,8 @@ else:
 
 
 class Config:
+    PORT = int(os.getenv("PORT", 3000))
+    HOST = os.getenv("HOST", "0.0.0.0")
     SECRET_KEY = os.getenv("SECRET_KEY", "dev-secret-key-3000")
     SQLALCHEMY_DATABASE_URI = _resolved_db_url
     SQLALCHEMY_TRACK_MODIFICATIONS = False
