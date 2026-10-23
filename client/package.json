@@ -1,0 +1,9 @@
+{
+  "name": "doanpython-client",
+  "version": "1.0.0",
+  "description": "Flashcard NiceGUI Client",
+  "scripts": {
+    "dev": "node ../scripts/dev.js",
+    "start": "node ../scripts/dev.js"
+  }
+}

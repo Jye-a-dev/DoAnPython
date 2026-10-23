@@ -67,7 +67,32 @@ system_bp = Blueprint("system", __name__, url_prefix="/api")
 # ===========================================================================
 @documents_bp.route("/upload", methods=["POST"])
 def upload_document():
-    """Upload và xử lý tài liệu (PDF / TXT) hoàn toàn trong RAM và lưu BLOB."""
+    """
+    Upload và xử lý tài liệu (PDF / TXT) hoàn toàn trong RAM và lưu BLOB
+    ---
+    tags:
+      - Documents
+    consumes:
+      - multipart/form-data
+    parameters:
+      - name: file
+        in: formData
+        type: file
+        required: true
+        description: File tài liệu (PDF hoặc TXT, tối đa 10MB)
+      - name: user_id
+        in: formData
+        type: integer
+        required: true
+        description: ID của người dùng sở hữu tài liệu
+    responses:
+      201:
+        description: Upload và trích xuất text thành công
+      400:
+        description: File không hợp lệ, rỗng hoặc vượt quá dung lượng
+      500:
+        description: Lỗi xử lý tài liệu
+    """
     if "file" not in request.files:
         return (
             jsonify(
@@ -105,7 +130,28 @@ def upload_document():
 
 @documents_bp.route("/<int:doc_id>", methods=["GET"])
 def get_document(doc_id: int):
-    """Lấy metadata và text trích xuất (hoặc binary BLOB nếu ?download=true)."""
+    """
+    Xem metadata và text trích xuất của Document (hoặc tải về file raw BLOB)
+    ---
+    tags:
+      - Documents
+    parameters:
+      - name: doc_id
+        in: path
+        type: integer
+        required: true
+        description: ID của tài liệu
+      - name: download
+        in: query
+        type: boolean
+        required: false
+        description: Nếu là true, tải trực tiếp dữ liệu binary từ cột BLOB
+    responses:
+      200:
+        description: Metadata và extracted_text của tài liệu
+      404:
+        description: Không tìm thấy tài liệu
+    """
     document = get_document_by_id(doc_id)
     if not document:
         return jsonify({"error": f"Không tìm thấy tài liệu với ID {doc_id}"}), 404
@@ -129,7 +175,21 @@ def get_document(doc_id: int):
 
 @documents_bp.route("", methods=["GET"])
 def get_all_documents():
-    """Lấy danh sách các tài liệu đã upload."""
+    """
+    Lấy danh sách các tài liệu đã upload
+    ---
+    tags:
+      - Documents
+    parameters:
+      - name: user_id
+        in: query
+        type: integer
+        required: false
+        description: Lọc theo ID người dùng
+    responses:
+      200:
+        description: Danh sách tài liệu
+    """
     user_id_raw = request.args.get("user_id")
     user_id = int(user_id_raw) if user_id_raw and user_id_raw.isdigit() else None
     documents = list_documents(user_id=user_id)
@@ -138,7 +198,23 @@ def get_all_documents():
 
 @documents_bp.route("/<int:doc_id>", methods=["DELETE"])
 def remove_document(doc_id: int):
-    """Xóa tài liệu theo ID."""
+    """
+    Xóa tài liệu theo ID
+    ---
+    tags:
+      - Documents
+    parameters:
+      - name: doc_id
+        in: path
+        type: integer
+        required: true
+        description: ID của tài liệu cần xóa
+    responses:
+      200:
+        description: Xóa tài liệu thành công
+      404:
+        description: Không tìm thấy tài liệu
+    """
     success = delete_document(doc_id)
     if not success:
         return jsonify({"error": f"Không tìm thấy tài liệu với ID {doc_id}"}), 404
@@ -150,7 +226,33 @@ def remove_document(doc_id: int):
 # ===========================================================================
 @generator_bp.route("/transcribe", methods=["POST"])
 def transcribe_audio_gateway():
-    """Forward file audio sang AI Pipeline (POST /api/pi/transcribe)."""
+    """
+    Bóc băng âm thanh (Speech-to-Text) trung gian qua AI Pipeline Microservice
+    ---
+    tags:
+      - AI Generator
+    consumes:
+      - multipart/form-data
+    parameters:
+      - name: file
+        in: formData
+        type: file
+        required: true
+        description: File âm thanh (.mp3, .wav, .m4a)
+      - name: language
+        in: formData
+        type: string
+        required: false
+        default: vi
+        description: "Mã ngôn ngữ (mặc định: vi)"
+    responses:
+      200:
+        description: Bóc băng thành công
+      400:
+        description: File không hợp lệ hoặc để trống
+      500:
+        description: Lỗi tiến trình Whisper STT
+    """
     if "file" not in request.files:
         return jsonify({"error": "Không tìm thấy file âm thanh trong form data"}), 400
 
@@ -175,7 +277,43 @@ def transcribe_audio_gateway():
 
 @generator_bp.route("/generate-from-doc/<int:doc_id>", methods=["POST"])
 def generate_from_doc_gateway(doc_id: int):
-    """Đọc extracted_text từ DB -> Forward sang Pipeline -> Lưu cards và log."""
+    """
+    Sinh flashcards tự động từ tài liệu bằng AI Flan-T5
+    ---
+    tags:
+      - AI Generator
+    parameters:
+      - name: doc_id
+        in: path
+        type: integer
+        required: true
+        description: ID của tài liệu nguồn
+      - name: body
+        in: body
+        required: true
+        schema:
+          type: object
+          required:
+            - deck_id
+          properties:
+            deck_id:
+              type: integer
+              example: 1
+              description: ID của bộ thẻ để lưu kết quả flashcards
+            user_id:
+              type: integer
+              example: 1
+              description: ID của người dùng (tùy chọn)
+    responses:
+      201:
+        description: Sinh và lưu flashcards thành công
+      400:
+        description: Thiếu dữ liệu hoặc deck_id không hợp lệ
+      404:
+        description: Không tìm thấy tài liệu
+      500:
+        description: Lỗi xảy ra trong tiến trình AI inference
+    """
     data = request.get_json(silent=True) or {}
     deck_id_raw = data.get("deck_id")
 
@@ -209,7 +347,34 @@ def generate_from_doc_gateway(doc_id: int):
 
 @generator_bp.route("/generate", methods=["POST"])
 def generate_raw_text_gateway():
-    """Sinh thẻ trực tiếp từ chuỗi text truyền lên (Forward sang Pipeline)."""
+    """
+    Sinh flashcards tự động từ chuỗi văn bản thuần (AI Pipeline)
+    ---
+    tags:
+      - AI Generator
+    parameters:
+      - name: body
+        in: body
+        required: true
+        schema:
+          type: object
+          required:
+            - text
+          properties:
+            text:
+              type: string
+              example: "Thủ đô của Việt Nam là Hà Nội."
+            deck_id:
+              type: integer
+              example: 1
+    responses:
+      201:
+        description: Sinh thẻ thành công
+      400:
+        description: Văn bản rỗng
+      500:
+        description: Lỗi xử lý AI
+    """
     data = request.get_json(silent=True) or {}
     text_content = data.get("text")
     deck_id = data.get("deck_id")
@@ -250,7 +415,40 @@ def generate_raw_text_gateway():
 
 @cards_bp.route("/generate", methods=["POST"])
 def generate_cards_dual_mode():
-    """Sinh thẻ linh hoạt từ text trực tiếp hoặc từ doc_id qua AI Pipeline."""
+    """
+    Sinh thẻ linh hoạt từ text trực tiếp hoặc từ doc_id qua AI Pipeline
+    ---
+    tags:
+      - Cards
+    parameters:
+      - name: body
+        in: body
+        required: true
+        schema:
+          type: object
+          properties:
+            text:
+              type: string
+              example: "Nội dung bài học cần sinh câu hỏi ôn tập..."
+            doc_id:
+              type: integer
+              example: 1
+            deck_id:
+              type: integer
+              example: 1
+            user_id:
+              type: integer
+              example: 1
+    responses:
+      201:
+        description: Sinh thẻ thành công
+      400:
+        description: Thiếu thông tin hoặc dữ liệu không hợp lệ
+      404:
+        description: Không tìm thấy tài liệu
+      500:
+        description: Lỗi xử lý AI
+    """
     data = request.get_json(silent=True) or {}
     text_content = data.get("text")
     doc_id_raw = data.get("doc_id") or data.get("document_id")
@@ -332,7 +530,26 @@ def generate_cards_dual_mode():
 # ===========================================================================
 @decks_bp.route("", methods=["GET"])
 def get_all_decks():
-    """Lấy danh sách các bộ thẻ (Decks)."""
+    """
+    Lấy danh sách các bộ thẻ (Decks)
+    ---
+    tags:
+      - Decks
+    parameters:
+      - name: user_id
+        in: query
+        type: integer
+        required: false
+        description: Lọc theo ID người dùng
+      - name: is_public
+        in: query
+        type: boolean
+        required: false
+        description: Lọc theo trạng thái công khai
+    responses:
+      200:
+        description: Danh sách bộ thẻ thành công
+    """
     user_id_raw = request.args.get("user_id")
     is_public_raw = request.args.get("is_public")
 
@@ -347,7 +564,41 @@ def get_all_decks():
 
 @decks_bp.route("", methods=["POST"])
 def create_new_deck():
-    """Tạo mới một bộ thẻ (Deck)."""
+    """
+    Tạo mới một bộ thẻ (Deck)
+    ---
+    tags:
+      - Decks
+    parameters:
+      - name: body
+        in: body
+        required: true
+        schema:
+          type: object
+          required:
+            - title
+            - user_id
+          properties:
+            title:
+              type: string
+              example: "Lập trình Python"
+            user_id:
+              type: integer
+              example: 1
+            description:
+              type: string
+              example: "Bộ câu hỏi ôn thi môn Lập trình Python"
+            is_public:
+              type: boolean
+              example: false
+    responses:
+      201:
+        description: Tạo bộ thẻ thành công
+      400:
+        description: Dữ liệu không hợp lệ
+      500:
+        description: Lỗi tạo bộ thẻ
+    """
     data = request.get_json(silent=True) or {}
     is_valid, error_msg, cleaned_data = validate_deck_payload(data, is_update=False)
     if not is_valid or cleaned_data is None:
@@ -365,7 +616,23 @@ def create_new_deck():
 
 @decks_bp.route("/<int:deck_id>", methods=["GET"])
 def get_deck_detail(deck_id: int):
-    """Lấy thông tin chi tiết bộ thẻ kèm danh sách thẻ."""
+    """
+    Lấy thông tin chi tiết bộ thẻ kèm danh sách thẻ
+    ---
+    tags:
+      - Decks
+    parameters:
+      - name: deck_id
+        in: path
+        type: integer
+        required: true
+        description: ID bộ thẻ
+    responses:
+      200:
+        description: Chi tiết bộ thẻ
+      404:
+        description: Không tìm thấy bộ thẻ
+    """
     deck = get_deck_by_id(deck_id)
     if not deck:
         return jsonify({"error": f"Không tìm thấy bộ thẻ với ID {deck_id}"}), 404
@@ -377,7 +644,40 @@ def get_deck_detail(deck_id: int):
 
 @decks_bp.route("/<int:deck_id>", methods=["PUT"])
 def update_deck_detail(deck_id: int):
-    """Cập nhật thông tin bộ thẻ."""
+    """
+    Cập nhật thông tin bộ thẻ
+    ---
+    tags:
+      - Decks
+    parameters:
+      - name: deck_id
+        in: path
+        type: integer
+        required: true
+        description: ID bộ thẻ cần cập nhật
+      - name: body
+        in: body
+        required: true
+        schema:
+          type: object
+          properties:
+            title:
+              type: string
+              example: "Tiêu đề mới"
+            description:
+              type: string
+              example: "Mô tả mới"
+            is_public:
+              type: boolean
+              example: true
+    responses:
+      200:
+        description: Cập nhật bộ thẻ thành công
+      400:
+        description: Dữ liệu không hợp lệ
+      404:
+        description: Không tìm thấy bộ thẻ
+    """
     data = request.get_json(silent=True) or {}
     is_valid, error_msg, cleaned_data = validate_deck_payload(data, is_update=True)
     if not is_valid or cleaned_data is None:
@@ -395,7 +695,23 @@ def update_deck_detail(deck_id: int):
 
 @decks_bp.route("/<int:deck_id>", methods=["DELETE"])
 def delete_deck_endpoint(deck_id: int):
-    """Xóa bộ thẻ theo ID (Cascade xóa thẻ bên trong)."""
+    """
+    Xóa bộ thẻ theo ID (Cascade xóa thẻ bên trong)
+    ---
+    tags:
+      - Decks
+    parameters:
+      - name: deck_id
+        in: path
+        type: integer
+        required: true
+        description: ID bộ thẻ cần xóa
+    responses:
+      200:
+        description: Xóa bộ thẻ thành công
+      404:
+        description: Không tìm thấy bộ thẻ
+    """
     success = delete_deck(deck_id)
     if not success:
         return jsonify({"error": f"Không tìm thấy bộ thẻ với ID {deck_id}"}), 404
@@ -404,7 +720,26 @@ def delete_deck_endpoint(deck_id: int):
 
 @cards_bp.route("", methods=["GET"])
 def get_all_cards():
-    """Lấy danh sách các flashcards."""
+    """
+    Lấy danh sách các flashcards
+    ---
+    tags:
+      - Cards
+    parameters:
+      - name: deck_id
+        in: query
+        type: integer
+        required: false
+        description: Lọc theo ID bộ thẻ
+      - name: document_id
+        in: query
+        type: integer
+        required: false
+        description: Lọc theo ID tài liệu nguồn
+    responses:
+      200:
+        description: Danh sách flashcards thành công
+    """
     deck_id_raw = request.args.get("deck_id")
     document_id_raw = request.args.get("document_id")
 
@@ -419,7 +754,50 @@ def get_all_cards():
 
 @cards_bp.route("", methods=["POST"])
 def create_new_card():
-    """Tạo mới một flashcard thủ công."""
+    """
+    Tạo mới một flashcard thủ công
+    ---
+    tags:
+      - Cards
+    parameters:
+      - name: body
+        in: body
+        required: true
+        schema:
+          type: object
+          required:
+            - question
+            - answer
+            - deck_id
+          properties:
+            question:
+              type: string
+              example: "Tuple trong Python có bất biến không?"
+            answer:
+              type: string
+              example: "Có"
+            explanation:
+              type: string
+              example: "Tuple không thể thay đổi phần tử sau khi khởi tạo"
+            difficulty:
+              type: string
+              example: "medium"
+            deck_id:
+              type: integer
+              example: 1
+            tags:
+              type: array
+              items:
+                type: string
+              example: ["python", "data-types"]
+    responses:
+      201:
+        description: Tạo flashcard thành công
+      400:
+        description: Câu hỏi hoặc câu trả lời rỗng hoặc không hợp lệ
+      500:
+        description: Lỗi tạo flashcard
+    """
     data = request.get_json(silent=True) or {}
     is_valid, error_msg, cleaned_data = validate_card_payload(data, is_update=False)
     if not is_valid or cleaned_data is None:
@@ -437,7 +815,23 @@ def create_new_card():
 
 @cards_bp.route("/<int:card_id>", methods=["GET"])
 def get_card_detail(card_id: int):
-    """Lấy chi tiết một flashcard theo ID."""
+    """
+    Lấy chi tiết một flashcard theo ID
+    ---
+    tags:
+      - Cards
+    parameters:
+      - name: card_id
+        in: path
+        type: integer
+        required: true
+        description: ID của flashcard
+    responses:
+      200:
+        description: Chi tiết flashcard
+      404:
+        description: Không tìm thấy flashcard
+    """
     card = get_card_by_id(card_id)
     if not card:
         return jsonify({"error": f"Không tìm thấy flashcard với ID {card_id}"}), 404
@@ -446,7 +840,48 @@ def get_card_detail(card_id: int):
 
 @cards_bp.route("/<int:card_id>", methods=["PUT"])
 def update_card_detail(card_id: int):
-    """Cập nhật nội dung flashcard."""
+    """
+    Cập nhật nội dung flashcard
+    ---
+    tags:
+      - Cards
+    parameters:
+      - name: card_id
+        in: path
+        type: integer
+        required: true
+        description: ID của flashcard cần cập nhật
+      - name: body
+        in: body
+        required: true
+        schema:
+          type: object
+          properties:
+            question:
+              type: string
+              example: "Câu hỏi cập nhật"
+            answer:
+              type: string
+              example: "Câu trả lời cập nhật"
+            explanation:
+              type: string
+              example: "Giải thích cập nhật"
+            difficulty:
+              type: string
+              example: "hard"
+            tags:
+              type: array
+              items:
+                type: string
+              example: ["python"]
+    responses:
+      200:
+        description: Cập nhật flashcard thành công
+      400:
+        description: Dữ liệu không hợp lệ
+      404:
+        description: Không tìm thấy flashcard
+    """
     data = request.get_json(silent=True) or {}
     is_valid, error_msg, cleaned_data = validate_card_payload(data, is_update=True)
     if not is_valid or cleaned_data is None:
@@ -464,7 +899,23 @@ def update_card_detail(card_id: int):
 
 @cards_bp.route("/<int:card_id>", methods=["DELETE"])
 def delete_card_endpoint(card_id: int):
-    """Xóa flashcard theo ID."""
+    """
+    Xóa flashcard theo ID
+    ---
+    tags:
+      - Cards
+    parameters:
+      - name: card_id
+        in: path
+        type: integer
+        required: true
+        description: ID của flashcard cần xóa
+    responses:
+      200:
+        description: Xóa flashcard thành công
+      404:
+        description: Không tìm thấy flashcard
+    """
     success = delete_card(card_id)
     if not success:
         return jsonify({"error": f"Không tìm thấy flashcard với ID {card_id}"}), 404
@@ -473,7 +924,21 @@ def delete_card_endpoint(card_id: int):
 
 @cards_bp.route("", methods=["DELETE"])
 def delete_all_cards_endpoint():
-    """Xóa toàn bộ flashcards (hoặc lọc theo query param deck_id)."""
+    """
+    Xóa toàn bộ flashcards (hoặc lọc theo query param deck_id)
+    ---
+    tags:
+      - Cards
+    parameters:
+      - name: deck_id
+        in: query
+        type: integer
+        required: false
+        description: Lọc xóa theo ID bộ thẻ (nếu không truyền sẽ xóa toàn bộ)
+    responses:
+      200:
+        description: Đã xóa toàn bộ flashcards thành công
+    """
     deck_id_raw = request.args.get("deck_id")
     deck_id = int(deck_id_raw) if deck_id_raw and deck_id_raw.isdigit() else None
     count = delete_all_cards(deck_id=deck_id)
@@ -547,7 +1012,35 @@ def calculate_sm2(
 
 @study_bp.route("/sessions", methods=["POST"])
 def start_study_session():
-    """Mở phiên học mới (Study Session)."""
+    """
+    Mở phiên học mới (Study Session)
+    ---
+    tags:
+      - Study
+    parameters:
+      - name: body
+        in: body
+        required: true
+        schema:
+          type: object
+          required:
+            - user_id
+            - deck_id
+          properties:
+            user_id:
+              type: integer
+              example: 1
+            deck_id:
+              type: integer
+              example: 1
+    responses:
+      201:
+        description: Khởi tạo phiên học thành công
+      400:
+        description: Dữ liệu đầu vào không hợp lệ
+      404:
+        description: Người dùng hoặc bộ thẻ không tồn tại
+    """
     data = request.get_json(silent=True) or {}
     is_valid, error_msg, cleaned_data = validate_study_session_payload(data)
     if not is_valid or cleaned_data is None:
@@ -582,7 +1075,23 @@ def start_study_session():
 
 @study_bp.route("/sessions/<int:session_id>/end", methods=["PUT"])
 def end_study_session(session_id: int):
-    """Kết thúc một phiên học."""
+    """
+    Kết thúc một phiên học
+    ---
+    tags:
+      - Study
+    parameters:
+      - name: session_id
+        in: path
+        type: integer
+        required: true
+        description: ID của phiên học cần kết thúc
+    responses:
+      200:
+        description: Đã kết thúc phiên học
+      404:
+        description: Không tìm thấy phiên học
+    """
     session = db.session.get(StudySession, session_id)
     if not session:
         return jsonify({"error": f"Không tìm thấy phiên học với ID {session_id}"}), 404
@@ -597,7 +1106,42 @@ def end_study_session(session_id: int):
 
 @study_bp.route("/review", methods=["POST"])
 def submit_study_review():
-    """Ghi nhận đánh giá (1-Again, 2-Hard, 3-Good, 4-Easy) & tính toán SM-2."""
+    """
+    Ghi nhận đánh giá (1-Again, 2-Hard, 3-Good, 4-Easy) & tính toán SM-2
+    ---
+    tags:
+      - Study
+    parameters:
+      - name: body
+        in: body
+        required: true
+        schema:
+          type: object
+          required:
+            - card_id
+            - review_rating
+          properties:
+            session_id:
+              type: integer
+              example: 1
+            card_id:
+              type: integer
+              example: 1
+            user_id:
+              type: integer
+              example: 1
+            review_rating:
+              type: integer
+              example: 3
+              description: "1: Again, 2: Hard, 3: Good, 4: Easy"
+    responses:
+      200:
+        description: Ghi nhận đánh giá ôn tập thành công
+      400:
+        description: Dữ liệu không hợp lệ
+      404:
+        description: Không tìm thấy flashcard hoặc session
+    """
     data = request.get_json(silent=True) or {}
     is_valid, error_msg, cleaned_data = validate_study_review_payload(data)
     if not is_valid or cleaned_data is None:
@@ -679,7 +1223,15 @@ def submit_study_review():
 # ===========================================================================
 @system_bp.route("/health", methods=["GET"])
 def health_check():
-    """Kiểm tra trạng thái Server + SQLite DB + Ping Healthcheck Pipeline (/api/pi/health)."""
+    """
+    Kiểm tra trạng thái Server + SQLite DB + Ping Healthcheck Pipeline (/api/pi/health)
+    ---
+    tags:
+      - System
+    responses:
+      200:
+        description: Trạng thái hệ thống bình thường
+    """
     db_status = "connected"
     try:
         db.session.execute(text("SELECT 1;")).scalar()

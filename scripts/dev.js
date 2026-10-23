@@ -28,16 +28,23 @@ function resolvePython(serviceDir) {
 
 const SERVER_PORT = process.env.PORT || "3000";
 const PIPELINE_PORT = process.env.PIPELINE_PORT || "8000";
+const CLIENT_PORT = process.env.CLIENT_PORT || "5000";
 
 const serverPython = resolvePython("server");
 const pipelinePython = resolvePython("pipeline");
+const clientPython = resolvePython("client");
+
+const cliArgs = process.argv.slice(2);
+const runAll = cliArgs.length === 0;
+const runServer = runAll || cliArgs.includes("--server") || cliArgs.includes("server");
+const runPipeline = runAll || cliArgs.includes("--pipeline") || cliArgs.includes("pipeline");
+const runClient = runAll || cliArgs.includes("--client") || cliArgs.includes("client");
 
 console.log("============================================================");
-console.log("Starting Flashcard System (Server & AI Pipeline)...");
-console.log(`Backend Server:     http://127.0.0.1:${SERVER_PORT} (Docs: /docs/)`);
-console.log(`AI Pipeline:        http://127.0.0.1:${PIPELINE_PORT} (Docs: /docs)`);
-console.log(`Server Python:      ${serverPython}`);
-console.log(`Pipeline Python:    ${pipelinePython}`);
+console.log("Starting Flashcard System Services...");
+if (runServer) console.log(`Backend Server:     http://127.0.0.1:${SERVER_PORT} (Docs: /docs/) [${serverPython}]`);
+if (runPipeline) console.log(`AI Pipeline:        http://127.0.0.1:${PIPELINE_PORT} (Docs: /docs) [${pipelinePython}]`);
+if (runClient) console.log(`Frontend Client:    http://127.0.0.1:${CLIENT_PORT} [${clientPython}]`);
 console.log("============================================================\n");
 
 function streamOutput(stream, prefix, colorCode) {
@@ -89,29 +96,52 @@ function runService(name, command, args, cwd, envExtra, colorCode) {
 }
 
 // 1. Start Server on port 3000
-const serverProc = runService(
-  `SERVER:${SERVER_PORT}`,
-  serverPython,
-  ["server/app/main.py"],
-  ROOT_DIR,
-  {
-    PORT: SERVER_PORT,
-    AI_PIPELINE_URL: `http://127.0.0.1:${PIPELINE_PORT}/api`,
-  },
-  "36" // Cyan
-);
+if (runServer) {
+  runService(
+    `SERVER:${SERVER_PORT}`,
+    serverPython,
+    ["server/app/main.py"],
+    ROOT_DIR,
+    {
+      PORT: SERVER_PORT,
+      AI_PIPELINE_URL: `http://127.0.0.1:${PIPELINE_PORT}/api`,
+    },
+    "36" // Cyan
+  );
+}
 
 // 2. Start Pipeline on port 8000
-const pipelineProc = runService(
-  `PIPELINE:${PIPELINE_PORT}`,
-  pipelinePython,
-  ["pipeline/main.py"],
-  ROOT_DIR,
-  {
-    PORT: PIPELINE_PORT,
-  },
-  "35" // Magenta
-);
+if (runPipeline) {
+  runService(
+    `PIPELINE:${PIPELINE_PORT}`,
+    pipelinePython,
+    ["pipeline/main.py"],
+    ROOT_DIR,
+    {
+      PORT: PIPELINE_PORT,
+    },
+    "35" // Magenta
+  );
+}
+
+// 3. Start Client on port 5000
+if (runClient) {
+  runService(
+    `CLIENT:${CLIENT_PORT}`,
+    clientPython,
+    ["client/main.py"],
+    ROOT_DIR,
+    {
+      PORT: CLIENT_PORT,
+      BACKEND_API_URL: `http://127.0.0.1:${SERVER_PORT}/api`,
+      PYTHONPATH: [
+        path.join(ROOT_DIR, "client"),
+        process.env.PYTHONPATH || "",
+      ].filter(Boolean).join(path.delimiter),
+    },
+    "32" // Green
+  );
+}
 
 function killAll() {
   console.log("\n🛑 Stopping all services...");

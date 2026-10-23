@@ -45,7 +45,7 @@ def create_app():
     app = Flask(__name__)
     app.config.from_object(Config)
     app.config["SWAGGER"] = {
-        "title": "Flashcard AI Pipeline API",
+        "title": "Flashcard Server API",
         "uiversion": 3,
         "openapi": "2.0",
     }
@@ -70,14 +70,14 @@ def create_app():
     swagger_template = {
         "swagger": "2.0",
         "info": {
-            "title": "Flashcard AI Pipeline API",
+            "title": "Flashcard Server API",
             "description": (
-                "Hệ thống API trích xuất và sinh câu hỏi flashcard tự động từ bài học "
-                "bằng mô hình AI Flan-T5, đồng thời quản lý lưu trữ thẻ ghi nhớ qua SQLite."
+                "Hệ thống API quản lý tài liệu học tập (Documents), bộ thẻ ghi nhớ (Decks), "
+                "thẻ flashcards, phiên học thuật toán Spaced Repetition (SM-2) và Gateway AI."
             ),
             "version": "1.0.0",
             "contact": {
-                "name": "Flashcard AI Support Team",
+                "name": "Flashcard Server Team",
             },
         },
         "basePath": "/",
@@ -89,7 +89,7 @@ def create_app():
             },
             {
                 "name": "AI Generator",
-                "description": "Tiến trình sinh câu hỏi tự động với AI Flan-T5",
+                "description": "Tiến trình sinh câu hỏi tự động và bóc băng âm thanh với AI Pipeline",
             },
             {
                 "name": "Decks",
@@ -110,8 +110,6 @@ def create_app():
         ],
     }
 
-    Swagger(app, config=swagger_config, template=swagger_template)
-
     # Khởi tạo và đồng bộ schema cơ sở dữ liệu
     init_db(app)
 
@@ -122,6 +120,8 @@ def create_app():
     app.register_blueprint(cards_bp)
     app.register_blueprint(study_bp)
     app.register_blueprint(system_bp)
+
+    Swagger(app, config=swagger_config, template=swagger_template)
 
     @app.route("/")
     def index():
