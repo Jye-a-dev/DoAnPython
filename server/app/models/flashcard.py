@@ -62,6 +62,9 @@ class Deck(db.Model):
     )
     ai_logs = db.relationship("AIGenerationLog", back_populates="deck")
 
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+
     def to_dict(self):
         return {
             "id": self.id,
@@ -184,6 +187,9 @@ class Tag(db.Model):
 
     user = db.relationship("User", back_populates="tags")
     cards = db.relationship("Card", secondary=card_tags, back_populates="tags")
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
 
     def to_dict(self):
         return {

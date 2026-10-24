@@ -42,6 +42,8 @@ from components import (
     InteractiveDemoController,
     render_features_grid,
     render_footer,
+    network_error_banner,
+    empty_deck_state,
 )
 from components.dropzone import format_file_size
 
@@ -266,10 +268,37 @@ def run_all_tests():
     test_dropzone_in_memory()
     test_flashcard_3d_flip()
     test_srs_action_bar_and_hotkeys()
+    test_feedback_states()
     test_main_page_compilation()
     print("=" * 65)
-    print("  ALL 6 TEST SUITES PASSED CLEANLY! [100% OK]")
+    print("  ALL 7 TEST SUITES PASSED CLEANLY! [100% OK]")
     print("=" * 65)
+
+
+def test_feedback_states():
+    print("[TEST 7/7] Feedback States (Network Error Banner & Empty State)...")
+    retry_called = []
+
+    def mock_retry():
+        retry_called.append(True)
+
+    with ui.element("div"):
+        banner = network_error_banner(on_retry=mock_retry)
+        assert banner is not None, "network_error_banner must render"
+
+        empty_deck = empty_deck_state(
+            title="Deck Rỗng",
+            icon="auto_stories",
+            action_text="Tạo mới",
+            action_url="/",
+            secondary_text="Xem Decks",
+            secondary_url="/decks",
+        )
+        assert empty_deck is not None, "empty_deck_state must render"
+
+    print(
+        "  -> [PASS] Feedback states (network_error_banner & empty_deck_state) verified."
+    )
 
 
 if __name__ == "__main__":

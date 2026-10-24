@@ -21,6 +21,9 @@ class Category(db.Model):
     folders = db.relationship("Folder", back_populates="category")
     decks = db.relationship("Deck", back_populates="category")
 
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+
     def to_dict(self):
         return {
             "id": self.id,
@@ -66,6 +69,9 @@ class Folder(db.Model):
         backref=db.backref("children", cascade="all, delete-orphan"),
     )
     decks = db.relationship("Deck", back_populates="folder")
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
 
     def to_dict(self):
         return {

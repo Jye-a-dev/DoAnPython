@@ -38,6 +38,14 @@ from app.api import (
     cards_bp,
     study_bp,
     system_bp,
+    users_bp,
+    profiles_bp,
+    categories_bp,
+    folders_bp,
+    tags_bp,
+    card_tags_bp,
+    ai_logs_bp,
+    favorites_bp,
 )
 
 
@@ -113,13 +121,21 @@ def create_app():
     # Khởi tạo và đồng bộ schema cơ sở dữ liệu
     init_db(app)
 
-    # Đăng ký toàn bộ Blueprints theo Layered Architecture
+    # Đăng ký toàn bộ 14 Blueprints (13 Tables + Gateway AI)
     app.register_blueprint(documents_bp)
     app.register_blueprint(generator_bp)
     app.register_blueprint(decks_bp)
     app.register_blueprint(cards_bp)
     app.register_blueprint(study_bp)
     app.register_blueprint(system_bp)
+    app.register_blueprint(users_bp)
+    app.register_blueprint(profiles_bp)
+    app.register_blueprint(categories_bp)
+    app.register_blueprint(folders_bp)
+    app.register_blueprint(tags_bp)
+    app.register_blueprint(card_tags_bp)
+    app.register_blueprint(ai_logs_bp)
+    app.register_blueprint(favorites_bp)
 
     Swagger(app, config=swagger_config, template=swagger_template)
 

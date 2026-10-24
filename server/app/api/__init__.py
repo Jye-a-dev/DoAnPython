@@ -5,6 +5,14 @@ from app.api.routes import (
     generator_bp,
     study_bp,
     system_bp,
+    users_bp,
+    profiles_bp,
+    categories_bp,
+    folders_bp,
+    tags_bp,
+    card_tags_bp,
+    ai_logs_bp,
+    favorites_bp,
 )
 
 __all__ = [
@@ -14,4 +22,12 @@ __all__ = [
     "generator_bp",
     "study_bp",
     "system_bp",
+    "users_bp",
+    "profiles_bp",
+    "categories_bp",
+    "folders_bp",
+    "tags_bp",
+    "card_tags_bp",
+    "ai_logs_bp",
+    "favorites_bp",
 ]

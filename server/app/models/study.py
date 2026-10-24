@@ -28,6 +28,9 @@ class StudySession(db.Model):
         "StudyReview", back_populates="session", cascade="all, delete-orphan"
     )
 
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+
     # Thuộc tính tương thích ngược
     @property
     def start_time(self):
@@ -100,6 +103,9 @@ class StudyReview(db.Model):
     card = db.relationship("Card", back_populates="study_reviews")
     user = db.relationship("User", back_populates="study_reviews")
 
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+
     @property
     def rating(self):
         return self.review_rating
@@ -157,6 +163,9 @@ class UserFavorite(db.Model):
     deck = db.relationship("Deck", back_populates="favorites")
     card = db.relationship("Card", back_populates="favorites")
 
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+
     def to_dict(self):
         return {
             "id": self.id,
@@ -201,6 +210,9 @@ class AIGenerationLog(db.Model):
     user = db.relationship("User", back_populates="ai_logs")
     document = db.relationship("Document", back_populates="ai_logs")
     deck = db.relationship("Deck", back_populates="ai_logs")
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
 
     def to_dict(self):
         return {

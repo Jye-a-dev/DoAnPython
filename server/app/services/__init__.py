@@ -24,6 +24,12 @@ from app.services.ai_service import (
     transcribe_audio_service,
     get_pipeline,
 )
+from app.services.pipeline_manager import (
+    start_pipeline,
+    stop_pipeline,
+    is_pipeline_healthy,
+    poll_pipeline_health,
+)
 
 __all__ = [
     "process_and_save_document",
@@ -46,4 +52,8 @@ __all__ = [
     "generate_cards_from_document_id",
     "transcribe_audio_service",
     "get_pipeline",
+    "start_pipeline",
+    "stop_pipeline",
+    "is_pipeline_healthy",
+    "poll_pipeline_health",
 ]

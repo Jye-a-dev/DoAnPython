@@ -15,7 +15,7 @@ def render_hero_section(
     - Cụm nút CTA kép: Bắt đầu tạo bài học & Ôn tập ngay (/study)
     """
     default_scroll = lambda: ui.run_javascript(
-        "document.getElementById('studio-section').scrollIntoView({behavior: 'smooth'})"
+        'document.getElementById("workspace-studio").scrollIntoView({behavior: "smooth"})'
     )
     default_study = lambda: ui.navigate.to("/study")
 
@@ -31,41 +31,42 @@ def render_hero_section(
         with ui.row().classes(
             "items-center gap-2 px-4 py-1.5 rounded-full bg-white/90 border border-indigo-200/80 shadow-xs backdrop-blur-xs"
         ):
-            ui.label("✨ Trợ lý học tập thông minh tích hợp AI Offline & Thuật toán SM-2").classes(
-                f"text-xs md:text-sm font-bold text-{TOKENS['primary']}"
-            )
+            ui.label(
+                "✨ Trợ lý học tập thông minh tích hợp AI Offline & Thuật toán SM-2"
+            ).classes(f"text-xs md:text-sm font-bold text-{TOKENS['primary']}")
 
         # Tiêu đề chính lớn
-        ui.label("Học nhanh hơn, nhớ lâu hơn với Flashcard tự động từ bài giảng.").classes(
+        ui.label(
+            "Học nhanh hơn, nhớ lâu hơn với Flashcard tự động từ bài giảng."
+        ).classes(
             "text-4xl md:text-6xl font-black text-slate-900 leading-tight max-w-4xl tracking-tight"
         )
 
         # Phụ đề súc tích
         ui.label(
             "Tải lên giáo trình PDF hoặc file ghi âm bài giảng MP3 để AI tự động trích xuất ý chính và tối ưu chu kỳ ôn tập của bạn."
-        ).classes("text-base md:text-lg text-slate-600 max-w-2xl font-normal leading-relaxed")
+        ).classes(
+            "text-base md:text-lg text-slate-600 max-w-2xl font-normal leading-relaxed"
+        )
 
         # Cụm nút CTA
-        with ui.row().classes("items-center justify-center gap-4 mt-2 flex-wrap"):
+        with ui.row().classes("items-center justify-center gap-4 mt-6"):
             ui.button(
-                "Bắt đầu tạo bài học",
+                "BẮT ĐẦU TẠO BÀI HỌC",
                 icon="bolt",
                 on_click=scroll_action,
             ).classes(
-                f"bg-{TOKENS['primary']} hover:bg-{TOKENS['primary_hover']} text-white font-bold text-base px-7 py-3.5 "
-                "rounded-2xl shadow-lg shadow-indigo-500/25 hover:shadow-indigo-500/40 hover:-translate-y-0.5 "
-                "transition-all duration-200 cursor-pointer"
+                "bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-6 py-3 rounded-2xl "
+                "shadow-lg hover:shadow-indigo-500/25 transition duration-200"
             )
 
             ui.button(
-                "Ôn tập ngay (/study)",
+                "XEM BỘ THẺ (/STUDY)",
                 icon="school",
                 on_click=study_action,
             ).classes(
-                "bg-white hover:bg-slate-50 text-slate-800 font-bold text-base px-7 py-3.5 "
-                "rounded-2xl border border-slate-200 shadow-sm hover:border-slate-300 "
-                "hover:-translate-y-0.5 transition-all duration-200 cursor-pointer"
+                "bg-white hover:bg-slate-100 text-black !text-black font-bold px-6 py-3 rounded-2xl "
+                "border border-slate-200 shadow-sm transition duration-200"
             )
 
     return hero_col
-
