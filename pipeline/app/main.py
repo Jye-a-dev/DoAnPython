@@ -1,6 +1,6 @@
 """
 main.py — FastAPI entrypoint for Flashcard AI Pipeline Microservice (Port 8000).
-Exclusively serves AI inference tasks (Flan-T5 generation, Whisper speech-to-text).
+Serves AI inference tasks: Qwen2.5-0.5B-Instruct Flashcard Generation & Whisper STT.
 Completely decoupled from database operations and business logic CRUD.
 """
 
@@ -41,13 +41,14 @@ logging.basicConfig(
 logger = logging.getLogger("ai_pipeline")
 
 # Configuration variables
-FLAN_T5_MODEL_PATH = os.getenv(
-    "FLAN_T5_MODEL_PATH",
-    str(_PIPELINE_DIR / "models_weights" / "flan-t5-base"),
+DEFAULT_MODEL_PATH = os.getenv(
+    "MODEL_PATH",
+    str(_PIPELINE_DIR / "models_weights" / "qwen2.5-0.5b"),
 )
-# Resolve relative paths relative to pipeline dir
-if not Path(FLAN_T5_MODEL_PATH).is_absolute():
-    FLAN_T5_MODEL_PATH = str((_PIPELINE_DIR / FLAN_T5_MODEL_PATH).resolve())
+if not Path(DEFAULT_MODEL_PATH).is_absolute():
+    DEFAULT_MODEL_PATH = str((_PIPELINE_DIR / DEFAULT_MODEL_PATH).resolve())
+
+QWEN_MODEL_PATH = DEFAULT_MODEL_PATH
 
 WHISPER_MODEL_SIZE = os.getenv("WHISPER_MODEL_SIZE", "base")
 DEVICE = os.getenv("DEVICE", "cpu")
@@ -64,8 +65,8 @@ def get_card_pipeline():
     if _card_pipeline is None:
         from src.processors.card_generator import FlashcardPipeline
 
-        logger.info("Initializing Flan-T5 model from %s...", FLAN_T5_MODEL_PATH)
-        _card_pipeline = FlashcardPipeline(model_path=FLAN_T5_MODEL_PATH)
+        logger.info("Initializing offline card model from %s...", DEFAULT_MODEL_PATH)
+        _card_pipeline = FlashcardPipeline(model_path=DEFAULT_MODEL_PATH)
     return _card_pipeline
 
 
@@ -96,7 +97,7 @@ async def lifespan(app: FastAPI):
         os.getenv("HOST", "0.0.0.0"),
         os.getenv("PORT", "8000"),
     )
-    logger.info("Verifying model path: %s", FLAN_T5_MODEL_PATH)
+    logger.info("Verifying model path: %s", DEFAULT_MODEL_PATH)
     yield
     logger.info("Shutting down AI Pipeline Microservice.")
 
@@ -106,8 +107,8 @@ async def lifespan(app: FastAPI):
 # ---------------------------------------------------------------------------
 app = FastAPI(
     title="Flashcard AI Pipeline Microservice",
-    description="Microservice chuyên biệt phục vụ các tác vụ AI: Flan-T5 Q&A Flashcard Generation & Whisper Speech-to-Text.",
-    version="2.0.0",
+    description="Microservice AI: Qwen2.5-0.5B-Instruct Flashcard Generation & Whisper Speech-to-Text.",
+    version="3.0.0",
     lifespan=lifespan,
 )
 
@@ -187,8 +188,8 @@ class HealthResponse(BaseModel):
 )
 async def pi_generate_flashcards(payload: GenerateRequest) -> Dict[str, Any]:
     """
-    Tiếp nhận văn bản bài học -> Tiền xử lý, chia chunk -> Chạy mô hình offline Flan-T5 ->
-    Trả về: {"count": N, "cards": [{"question": "...", "answer": "..."}], "inference_time_seconds": 1.25}.
+    Tiếp nhận văn bản bài học → Tiền xử lý, chia chunk → Chạy Qwen2.5-0.5B-Instruct →
+    Trả về: {"count": N, "cards": [{"question": "...", "answer": "..."}], "inference_time_seconds": 2.45}.
     """
     cleaned_input = payload.text.strip()
     if not cleaned_input:
@@ -202,6 +203,12 @@ async def pi_generate_flashcards(payload: GenerateRequest) -> Dict[str, Any]:
         from src.cleaners.text_cleaner import clean_text, chunk_text
 
         cleaned = clean_text(cleaned_input)
+        logger.info(
+            "[/api/pi/generate] Input=%d chars | cleaned=%d chars",
+            len(cleaned_input),
+            len(cleaned),
+        )
+
         chunks = chunk_text(
             cleaned,
             max_words=payload.max_words_per_chunk or DEFAULT_MAX_WORDS_PER_CHUNK,
@@ -209,23 +216,41 @@ async def pi_generate_flashcards(payload: GenerateRequest) -> Dict[str, Any]:
         if not chunks:
             chunks = [cleaned[:500]] if cleaned else []
 
+        logger.info(
+            "[/api/pi/generate] %d chunks | max_cards=%d",
+            len(chunks),
+            payload.max_cards or 3,
+        )
+
         pipeline = get_card_pipeline()
-        cards: List[Dict[str, str]] = pipeline.generate_from_chunks(chunks)
+        cards: List[Dict[str, str]] = pipeline.generate_from_chunks(
+            chunks,
+            max_cards_per_chunk=payload.max_cards or 3,
+        )
 
         if payload.max_cards and payload.max_cards > 0:
             cards = cards[: payload.max_cards]
 
         inference_time = round(time.perf_counter() - start_time, 2)
+        logger.info(
+            "[/api/pi/generate] DONE → %d cards in %.2fs", len(cards), inference_time
+        )
         return {
             "count": len(cards),
             "cards": cards,
             "inference_time_seconds": inference_time,
         }
+    except HTTPException:
+        raise
     except Exception as exc:
-        logger.exception("Error during flashcard generation: %s", exc)
+        logger.exception(
+            "[/api/pi/generate] UNHANDLED EXCEPTION after %.2fs: %s",
+            time.perf_counter() - start_time,
+            exc,
+        )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Lỗi tiến trình AI Flan-T5: {str(exc)}",
+            detail=f"Lỗi tiến trình AI: {type(exc).__name__}: {str(exc)}",
         )
 
 
@@ -304,12 +329,12 @@ async def pi_transcribe_audio(
 )
 async def pi_check_health() -> Dict[str, Any]:
     """
-    Kiểm tra tình trạng hoạt động của service và nạp trọng số 2 model (Flan-T5 & Whisper).
+    Kiểm tra tình trạng hoạt động của service và các model (Qwen2.5 & Whisper).
     """
-    # Flan-T5 check
-    flan_status = "ready" if _card_pipeline is not None else "available_on_disk"
-    if not Path(FLAN_T5_MODEL_PATH).exists():
-        flan_status = "model_weights_missing"
+    # Qwen2.5 check
+    qwen_status = "ready" if _card_pipeline is not None else "available_on_disk"
+    if not Path(QWEN_MODEL_PATH).exists():
+        qwen_status = "model_weights_missing"
 
     # Whisper check
     whisper_status = (
@@ -321,10 +346,11 @@ async def pi_check_health() -> Dict[str, Any]:
     return {
         "status": "healthy",
         "models": {
-            "flan_t5": {
-                "status": flan_status,
+            "qwen": {
+                "status": qwen_status,
                 "details": {
-                    "model_path": FLAN_T5_MODEL_PATH,
+                    "model_path": QWEN_MODEL_PATH,
+                    "model_name": "Qwen/Qwen2.5-0.5B-Instruct",
                     "loaded_in_memory": _card_pipeline is not None,
                 },
             },
@@ -343,12 +369,13 @@ async def pi_check_health() -> Dict[str, Any]:
     }
 
 
-
 if __name__ == "__main__":
     import uvicorn
 
     port = int(os.getenv("PORT", 8000))
     host = os.getenv("HOST", "0.0.0.0")
     print(f"Starting AI Pipeline on http://{host}:{port}")
-    app_target = "pipeline.app.main:app" if Path("pipeline").exists() else "app.main:app"
+    app_target = (
+        "pipeline.app.main:app" if Path("pipeline").exists() else "app.main:app"
+    )
     uvicorn.run(app_target, host=host, port=port, reload=False)
