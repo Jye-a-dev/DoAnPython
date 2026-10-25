@@ -27,5 +27,12 @@ class Config:
     SECRET_KEY = os.getenv("SECRET_KEY", "dev-secret-key-3000")
     SQLALCHEMY_DATABASE_URI = _resolved_db_url
     SQLALCHEMY_TRACK_MODIFICATIONS = False
+    SQLALCHEMY_ENGINE_OPTIONS = {
+        "connect_args": {
+            "timeout": 60.0,
+            "check_same_thread": False,
+        },
+        "pool_pre_ping": True,
+    }
     AI_PIPELINE_URL = os.getenv("AI_PIPELINE_URL", "http://127.0.0.1:8000/api")
     CLIENT_ORIGIN = os.getenv("CLIENT_ORIGIN", "http://127.0.0.1:5000")

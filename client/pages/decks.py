@@ -14,6 +14,7 @@ from components import (
     show_toast,
 )
 from services import api
+from services.auth_guard import get_current_user
 
 
 def _format_date(iso_str: Optional[str]) -> str:
@@ -80,8 +81,14 @@ async def render_decks_page() -> None:
                 desc_val = (
                     deck_desc_input.value.strip() if deck_desc_input.value else ""
                 )
+                cur_user = get_current_user()
+                active_user_id = (
+                    (cur_user.get("id") or cur_user.get("user_id") or 1)
+                    if cur_user
+                    else 1
+                )
                 res = await api.create_deck(
-                    title=title_val, description=desc_val, user_id=1
+                    title=title_val, description=desc_val, user_id=active_user_id
                 )
 
                 if isinstance(res, dict) and "id" in res:

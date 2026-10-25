@@ -13,6 +13,7 @@ from app.api.routes import (
     card_tags_bp,
     ai_logs_bp,
     favorites_bp,
+    auth_bp,
 )
 
 __all__ = [
@@ -30,4 +31,5 @@ __all__ = [
     "card_tags_bp",
     "ai_logs_bp",
     "favorites_bp",
+    "auth_bp",
 ]

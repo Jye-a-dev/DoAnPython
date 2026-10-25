@@ -46,6 +46,7 @@ from app.api import (
     card_tags_bp,
     ai_logs_bp,
     favorites_bp,
+    auth_bp,
 )
 
 
@@ -115,6 +116,18 @@ def create_app():
                 "name": "System",
                 "description": "Kiểm tra tình trạng hoạt động của dịch vụ",
             },
+            {
+                "name": "Auth",
+                "description": "Xác thực đăng nhập và đăng ký người dùng",
+            },
+            {
+                "name": "Users",
+                "description": "Quản lý tài khoản người dùng (Table 1: users) - CRUD đầy đủ",
+            },
+            {
+                "name": "User Profiles",
+                "description": "Quản lý hồ sơ học tập (Table 2: user_profiles) - CRUD đầy đủ",
+            },
         ],
     }
 
@@ -136,8 +149,15 @@ def create_app():
     app.register_blueprint(card_tags_bp)
     app.register_blueprint(ai_logs_bp)
     app.register_blueprint(favorites_bp)
+    app.register_blueprint(auth_bp)
 
     Swagger(app, config=swagger_config, template=swagger_template)
+
+    @app.teardown_request
+    def teardown_db_session(exception=None):
+        if exception:
+            db.session.rollback()
+        db.session.remove()
 
     @app.route("/")
     def index():

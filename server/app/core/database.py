@@ -23,7 +23,8 @@ class DynamicSQLAlchemy(SQLAlchemy):
         default_engine = engines_dict.get(None)
 
         if current_uri is not None and (
-            default_engine is None or str(default_engine.url) != current_uri
+            default_engine is None
+            or getattr(default_engine, "_configured_uri", None) != current_uri
         ):
             if default_engine is not None:
                 default_engine.dispose()
@@ -32,14 +33,18 @@ class DynamicSQLAlchemy(SQLAlchemy):
             if current_uri == "sqlite:///:memory:":
                 # Dùng StaticPool và tắt check_same_thread để toàn bộ test client dùng chung RAM DB
                 opts["poolclass"] = StaticPool
-                opts["connect_args"] = {"check_same_thread": False}
+                opts["connect_args"] = {"check_same_thread": False, "timeout": 60.0}
+            elif current_uri.startswith("sqlite:///"):
+                opts["connect_args"] = {"check_same_thread": False, "timeout": 60.0}
 
             new_engine = sa.create_engine(current_uri, **opts)
+            new_engine._configured_uri = current_uri
 
             @event.listens_for(new_engine, "connect")
             def set_fk_pragma(dbapi_conn, _):
                 cursor = dbapi_conn.cursor()
                 cursor.execute("PRAGMA foreign_keys=ON;")
+                cursor.execute("PRAGMA busy_timeout=60000;")
                 cursor.close()
 
             engines_dict[None] = new_engine
@@ -52,9 +57,10 @@ db = DynamicSQLAlchemy()
 
 @event.listens_for(Engine, "connect")
 def set_sqlite_pragma(dbapi_connection, connection_record):
-    """Đảm bảo mọi kết nối SQLite luôn kích hoạt PRAGMA foreign_keys=ON."""
+    """Đảm bảo mọi kết nối SQLite luôn kích hoạt PRAGMA foreign_keys=ON và busy_timeout=60000."""
     cursor = dbapi_connection.cursor()
     cursor.execute("PRAGMA foreign_keys=ON;")
+    cursor.execute("PRAGMA busy_timeout=60000;")
     cursor.close()
 
 
@@ -116,20 +122,17 @@ def init_db(app):
 
         db.create_all()
 
-        # Đảm bảo User mặc định (id=1) luôn tồn tại cho kịch bản kiểm thử & phát triển
-        try:
-            from app.models.user import User
-
-            if not db.session.get(User, 1):
-                default_user = User(
-                    id=1,
-                    username="default_user",
-                    email="user@flashcard.ai",
-                    password_hash="dev_hash",
-                    role="user",
-                    is_active=True,
-                )
-                db.session.add(default_user)
-                db.session.commit()
-        except Exception:
-            db.session.rollback()
+        # Kích hoạt WAL mode một lần duy nhất cho cơ sở dữ liệu SQLite file
+        if db_uri.startswith("sqlite:///") and db_uri != "sqlite:///:memory:":
+            raw_conn = db.engine.raw_connection()
+            try:
+                cursor = raw_conn.cursor()
+                cursor.execute("PRAGMA journal_mode=WAL;")
+                cursor.execute("PRAGMA busy_timeout=60000;")
+                cursor.execute("PRAGMA synchronous=NORMAL;")
+                raw_conn.commit()
+                cursor.close()
+            except Exception:
+                pass
+            finally:
+                raw_conn.close()

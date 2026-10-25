@@ -85,6 +85,7 @@ def empty_deck_state(
                 )
 
         with ui.row().classes("gap-3 mt-2 items-center justify-center flex-wrap"):
+
             def _trigger_primary() -> None:
                 if on_action_callback:
                     if asyncio.iscoroutinefunction(on_action_callback):
@@ -107,9 +108,8 @@ def empty_deck_state(
                     secondary_text,
                     icon="folder_special",
                     on_click=lambda: ui.navigate.to(secondary_url),
-                ).classes(
-                    "bg-white hover:bg-slate-50 text-slate-700 font-bold rounded-xl px-5 py-2.5 border border-slate-200 transition duration-200 cursor-pointer text-sm"
+                ).props('text-color="black"').classes(
+                    "bg-white hover:bg-slate-50 !text-black text-black font-bold rounded-xl px-5 py-2.5 border border-slate-200 transition duration-200 cursor-pointer text-sm"
                 )
 
     return container
-

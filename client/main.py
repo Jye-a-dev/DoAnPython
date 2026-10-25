@@ -22,36 +22,71 @@ from nicegui import ui
 from pages.home import render_home_page
 from pages.study import render_study_page
 from pages.decks import render_decks_page
+from pages.login import render_login_page
+from pages.register import render_register_page
+from pages.profile import render_profile_page
+from services.auth_guard import require_auth, redirect_if_authenticated
 
 port = int(os.getenv("PORT", 5000))
 host = os.getenv("HOST", "0.0.0.0")
 
 
 # ===========================================================================
-# SPA ROUTER: ĐĂNG KÝ CÁC ROUTES CHUẨN CỦA ỨNG DỤNG
+# SPA ROUTER: ĐĂNG KÝ TOÀN BỘ CÁC ROUTES CHUẨN CỦA ỨNG DỤNG
 # ===========================================================================
 @ui.page("/")
 def home_route() -> None:
-    """Route chính: Studio tạo bài học SPA kết hợp Hero và AI Card Generator."""
+    """Route công khai: Studio tạo bài học SPA kết hợp Hero và AI Card Generator."""
     render_home_page()
 
 
-@ui.page("/study")
-async def study_route(deck_id: Optional[int] = None) -> None:
-    """Route ôn tập: Lặp lại ngắt quãng SM-2 Focus Mode kèm Hotkeys 1-4 & Space."""
-    await render_study_page(deck_id=deck_id)
+@ui.page("/login")
+def login_route() -> None:
+    """Route công khai: Màn hình Đăng nhập (Guard: Chuyển hướng sang /decks nếu đã xác thực)."""
+    if redirect_if_authenticated("/decks"):
+        return
+    render_login_page()
+
+
+@ui.page("/register")
+def register_route() -> None:
+    """Route công khai: Màn hình Đăng ký tài khoản (Guard: Chuyển hướng nếu đã xác thực)."""
+    if redirect_if_authenticated("/decks"):
+        return
+    render_register_page()
 
 
 @ui.page("/decks")
 async def decks_route() -> None:
-    """Route thư viện: Quản lý các bộ thẻ Flashcard (Decks), thống kê và thẻ đến hạn."""
+    """Route bảo vệ (Protected): Quản lý các bộ thẻ Flashcard (Decks), thống kê và thẻ đến hạn."""
+    if not require_auth():
+        return
     await render_decks_page()
 
 
-# Bí danh tương thích ngược cho test runner
+@ui.page("/study")
+async def study_route(deck_id: Optional[int] = None) -> None:
+    """Route bảo vệ (Protected): Lặp lại ngắt quãng SM-2 Focus Mode kèm Hotkeys 1-4 & Space."""
+    if not require_auth():
+        return
+    await render_study_page(deck_id=deck_id)
+
+
+@ui.page("/profile")
+async def profile_route() -> None:
+    """Route bảo vệ (Protected): Hồ sơ cá nhân, KPI ghi nhớ SM-2 và cài đặt mục tiêu học tập."""
+    if not require_auth():
+        return
+    await render_profile_page()
+
+
+# Bí danh tương thích ngược cho test runner & import alias
 index = home_route
 render_study = study_route
 render_decks = decks_route
+render_login = login_route
+render_register = register_route
+render_profile = profile_route
 
 
 # ===========================================================================

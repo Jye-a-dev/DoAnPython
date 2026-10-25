@@ -1,1 +1,1 @@
-{"user":{"email":"admin@gmail.com","name":"Admin","user_id":1}}
+{"is_authenticated":true,"user":{"created_at":"2026-10-25T20:48:10.725504","email":"admin@gmail.com","id":1,"is_active":true,"role":"user","updated_at":"2026-10-25T20:48:10.725514","username":"admin","display_name":"admin"}}

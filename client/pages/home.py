@@ -76,8 +76,8 @@ def render_home_page() -> None:
                     "ÔN TẬP SM-2",
                     icon="school",
                     on_click=lambda: ui.navigate.to("/study"),
-                ).classes(
-                    "bg-white hover:bg-slate-100 text-slate-800 font-bold px-6 py-3 rounded-2xl "
+                ).props('text-color="black"').classes(
+                    "bg-white hover:bg-slate-100 !text-black text-black font-bold px-6 py-3 rounded-2xl "
                     "border border-slate-200 shadow-sm transition duration-200 cursor-pointer"
                 )
 
@@ -85,8 +85,8 @@ def render_home_page() -> None:
                     "THƯ VIỆN DECK",
                     icon="folder_special",
                     on_click=lambda: ui.navigate.to("/decks"),
-                ).classes(
-                    "bg-white hover:bg-slate-100 text-slate-800 font-bold px-6 py-3 rounded-2xl "
+                ).props('text-color="black"').classes(
+                    "bg-white hover:bg-slate-100 !text-black text-black font-bold px-6 py-3 rounded-2xl "
                     "border border-slate-200 shadow-sm transition duration-200 cursor-pointer"
                 )
 

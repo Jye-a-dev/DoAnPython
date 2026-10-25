@@ -14,6 +14,7 @@ from components import (
     show_toast,
 )
 from services import api
+from services.auth_guard import get_current_user
 
 
 async def render_study_page(deck_id: Optional[int] = None) -> None:
@@ -107,8 +108,14 @@ async def render_study_page(deck_id: Optional[int] = None) -> None:
                 # -----------------------------------------------------------
                 session_id: int = 1
                 target_deck_id = deck_id or cards_pool[0].get("deck_id", 1)
+                cur_user = get_current_user()
+                active_user_id = (
+                    (cur_user.get("id") or cur_user.get("user_id") or 1)
+                    if cur_user
+                    else 1
+                )
                 sess_resp = await api.create_study_session(
-                    deck_id=target_deck_id, user_id=1
+                    deck_id=target_deck_id, user_id=active_user_id
                 )
                 if isinstance(sess_resp, dict):
                     session_id = sess_resp.get("session_id") or sess_resp.get("id", 1)
@@ -248,8 +255,8 @@ async def render_study_page(deck_id: Optional[int] = None) -> None:
                                 "Ôn Tập Lại Bộ Này",
                                 icon="replay",
                                 on_click=restart_session,
-                            ).classes(
-                                "bg-white hover:bg-slate-100 text-slate-800 font-bold px-6 py-2.5 rounded-xl border border-slate-200"
+                            ).props('text-color="black"').classes(
+                                "bg-white hover:bg-slate-100 !text-black text-black font-bold px-6 py-2.5 rounded-xl border border-slate-200"
                             )
 
                     async def update_current_card_ui() -> None:

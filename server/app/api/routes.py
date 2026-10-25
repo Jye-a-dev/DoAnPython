@@ -87,6 +87,7 @@ tags_bp = Blueprint("tags", __name__, url_prefix="/api/tags")
 card_tags_bp = Blueprint("card_tags", __name__, url_prefix="/api/card-tags")
 ai_logs_bp = Blueprint("ai_logs", __name__, url_prefix="/api/ai-logs")
 favorites_bp = Blueprint("favorites", __name__, url_prefix="/api/favorites")
+auth_bp = Blueprint("auth", __name__, url_prefix="/api/auth")
 
 
 # ===========================================================================
@@ -1287,9 +1288,36 @@ def health_check():
 # ===========================================================================
 # 6. USERS CRUD API (Table 1: users)
 # ===========================================================================
+# ===========================================================================
+# 6. USERS CRUD API (Table 1: users)
+# ===========================================================================
 @users_bp.route("", methods=["GET"])
 def list_users():
-    """Lấy danh sách người dùng trong hệ thống"""
+    """
+    Lấy danh sách người dùng trong hệ thống (Table 1: users)
+    ---
+    tags:
+      - Users
+    parameters:
+      - name: username
+        in: query
+        type: string
+        required: false
+        description: Lọc theo username
+      - name: email
+        in: query
+        type: string
+        required: false
+        description: Lọc theo email
+      - name: role
+        in: query
+        type: string
+        required: false
+        description: Lọc theo vai trò (user, admin, teacher)
+    responses:
+      200:
+        description: Danh sách người dùng thành công
+    """
     username = request.args.get("username")
     email = request.args.get("email")
     role = request.args.get("role")
@@ -1306,10 +1334,57 @@ def list_users():
 
 @users_bp.route("", methods=["POST"])
 def create_user():
-    """Tạo mới tài khoản người dùng"""
+    """
+    Tạo mới tài khoản người dùng (Table 1: users)
+    ---
+    tags:
+      - Users
+    parameters:
+      - name: body
+        in: body
+        required: true
+        schema:
+          type: object
+          required:
+            - email
+          properties:
+            username:
+              type: string
+              example: student01
+            email:
+              type: string
+              example: student01@eduflash.ai
+            password:
+              type: string
+              example: secret123
+            role:
+              type: string
+              default: user
+              example: user
+            is_active:
+              type: boolean
+              default: true
+            display_name:
+              type: string
+              example: Nguyễn Văn A
+            full_name:
+              type: string
+              example: Nguyễn Văn A
+    responses:
+      201:
+        description: Tạo người dùng thành công
+      400:
+        description: Thiếu thông tin bắt buộc (email hoặc username)
+      409:
+        description: Tên người dùng hoặc email đã tồn tại
+    """
     data = request.get_json(silent=True) or {}
-    username = data.get("username")
     email = data.get("email")
+    username = (
+        data.get("username")
+        or data.get("display_name")
+        or (email.split("@")[0] if email else None)
+    )
     raw_password = data.get("password") or data.get("password_hash", "default_hash")
     if not username or not email:
         return jsonify({"error": "Trường 'username' và 'email' là bắt buộc"}), 400
@@ -1327,16 +1402,126 @@ def create_user():
     profile = UserProfile(
         user_id=user.id,
         display_name=data.get("display_name", username),
-        full_name=data.get("full_name"),
+        full_name=data.get("full_name") or data.get("display_name"),
     )
     db.session.add(profile)
     db.session.commit()
     return jsonify(user.to_dict()), 201
 
 
+@auth_bp.route("/login", methods=["POST"])
+def auth_login_route():
+    """
+    Xác thực đăng nhập tài khoản chuẩn (POST /api/auth/login)
+    ---
+    tags:
+      - Auth
+    parameters:
+      - name: body
+        in: body
+        required: true
+        schema:
+          type: object
+          required:
+            - password
+          properties:
+            login:
+              type: string
+              example: student01@eduflash.ai
+            password:
+              type: string
+              example: secret123
+    responses:
+      200:
+        description: Xác thực đăng nhập thành công
+      400:
+        description: Thiếu thông tin đăng nhập
+      401:
+        description: Sai tên người dùng hoặc mật khẩu
+    """
+    return login_user()
+
+
+@auth_bp.route("/register", methods=["POST"])
+def auth_register_route():
+    """
+    Đăng ký tài khoản người dùng mới chuẩn (POST /api/auth/register)
+    ---
+    tags:
+      - Auth
+    parameters:
+      - name: body
+        in: body
+        required: true
+        schema:
+          type: object
+          required:
+            - email
+            - password
+          properties:
+            username:
+              type: string
+              example: student01
+            email:
+              type: string
+              example: student01@eduflash.ai
+            password:
+              type: string
+              example: secret123
+            display_name:
+              type: string
+              example: Nguyễn Văn A
+            full_name:
+              type: string
+              example: Nguyễn Văn A
+    responses:
+      201:
+        description: Đăng ký tài khoản thành công
+      400:
+        description: Dữ liệu không hợp lệ
+      409:
+        description: Tên đăng nhập hoặc email đã tồn tại
+    """
+    return create_user()
+
+
 @users_bp.route("/login", methods=["POST"])
 def login_user():
-    """Xác thực đăng nhập người dùng"""
+    """
+    Xác thực đăng nhập người dùng (POST /api/users/login)
+    ---
+    tags:
+      - Users
+      - Auth
+    parameters:
+      - name: body
+        in: body
+        required: true
+        schema:
+          type: object
+          required:
+            - password
+          properties:
+            login:
+              type: string
+              example: student01@eduflash.ai
+            username:
+              type: string
+              example: student01
+            email:
+              type: string
+              example: student01@eduflash.ai
+            password:
+              type: string
+              example: secret123
+    responses:
+      200:
+        description: Đăng nhập thành công
+      400:
+        description: Thiếu thông tin đăng nhập
+      401:
+        description: Thông tin đăng nhập không chính xác
+    """
     data = request.get_json(silent=True) or {}
     login_val = data.get("username") or data.get("email") or data.get("login")
     password = data.get("password", "")
@@ -1360,7 +1545,23 @@ def login_user():
 
 @users_bp.route("/<int:user_id>", methods=["GET"])
 def get_user_by_id(user_id: int):
-    """Lấy thông tin chi tiết một người dùng"""
+    """
+    Lấy thông tin chi tiết một người dùng theo ID (Table 1: users)
+    ---
+    tags:
+      - Users
+    parameters:
+      - name: user_id
+        in: path
+        type: integer
+        required: true
+        description: ID của người dùng cần lấy thông tin
+    responses:
+      200:
+        description: Chi tiết người dùng thành công
+      404:
+        description: Không tìm thấy người dùng
+    """
     user = db.session.get(User, user_id)
     if not user:
         return jsonify({"error": f"Không tìm thấy người dùng ID {user_id}"}), 404
@@ -1369,7 +1570,44 @@ def get_user_by_id(user_id: int):
 
 @users_bp.route("/<int:user_id>", methods=["PUT"])
 def update_user_by_id(user_id: int):
-    """Cập nhật thông tin người dùng"""
+    """
+    Cập nhật thông tin người dùng (Table 1: users)
+    ---
+    tags:
+      - Users
+    parameters:
+      - name: user_id
+        in: path
+        type: integer
+        required: true
+        description: ID người dùng cần cập nhật
+      - name: body
+        in: body
+        required: true
+        schema:
+          type: object
+          properties:
+            username:
+              type: string
+              example: updated_username
+            email:
+              type: string
+              example: updated_email@eduflash.ai
+            role:
+              type: string
+              example: user
+            is_active:
+              type: boolean
+              example: true
+            password:
+              type: string
+              example: newpassword123
+    responses:
+      200:
+        description: Cập nhật người dùng thành công
+      404:
+        description: Không tìm thấy người dùng
+    """
     user = db.session.get(User, user_id)
     if not user:
         return jsonify({"error": f"Không tìm thấy người dùng ID {user_id}"}), 404
@@ -1390,18 +1628,55 @@ def update_user_by_id(user_id: int):
 
 @users_bp.route("/<int:user_id>", methods=["DELETE"])
 def delete_user_by_id(user_id: int):
-    """Xóa tài khoản người dùng"""
+    """
+    Xóa tài khoản người dùng (Table 1: users)
+    ---
+    tags:
+      - Users
+    parameters:
+      - name: user_id
+        in: path
+        type: integer
+        required: true
+        description: ID người dùng cần xóa
+    responses:
+      200:
+        description: Đã xóa người dùng thành công
+      404:
+        description: Không tìm thấy người dùng
+    """
     user = db.session.get(User, user_id)
     if not user:
         return jsonify({"error": f"Không tìm thấy người dùng ID {user_id}"}), 404
-    db.session.delete(user)
-    db.session.commit()
-    return jsonify({"message": f"Đã xóa người dùng ID {user_id} thành công"}), 200
+    try:
+        db.session.delete(user)
+        db.session.commit()
+        return jsonify({"message": f"Đã xóa người dùng ID {user_id} thành công"}), 200
+    except Exception as err:
+        db.session.rollback()
+        return jsonify({"error": f"Lỗi xóa người dùng: {str(err)}"}), 500
 
 
 @users_bp.route("/<int:user_id>/profile", methods=["GET"])
 def get_user_profile_by_user_id(user_id: int):
-    """Lấy hồ sơ cá nhân theo user_id"""
+    """
+    Lấy hồ sơ cá nhân theo user_id (1:1 với users)
+    ---
+    tags:
+      - Users
+      - User Profiles
+    parameters:
+      - name: user_id
+        in: path
+        type: integer
+        required: true
+        description: ID người dùng cần lấy hồ sơ
+    responses:
+      200:
+        description: Thông tin hồ sơ người dùng thành công
+      404:
+        description: Không tìm thấy hồ sơ của người dùng
+    """
     profile = UserProfile.query.filter_by(user_id=user_id).first()
     if not profile:
         return (
@@ -1411,12 +1686,98 @@ def get_user_profile_by_user_id(user_id: int):
     return jsonify(profile.to_dict()), 200
 
 
+@users_bp.route("/<int:user_id>/profile", methods=["PUT"])
+def update_user_profile_by_user_id(user_id: int):
+    """
+    Cập nhật hồ sơ cá nhân theo user_id (Table 2: user_profiles)
+    ---
+    tags:
+      - Users
+      - User Profiles
+    parameters:
+      - name: user_id
+        in: path
+        type: integer
+        required: true
+        description: ID người dùng cần cập nhật hồ sơ
+      - name: body
+        in: body
+        required: true
+        schema:
+          type: object
+          properties:
+            display_name:
+              type: string
+              example: John Doe
+            full_name:
+              type: string
+              example: Johnathan Doe
+            avatar_url:
+              type: string
+              example: https://example.com/avatar.png
+            bio:
+              type: string
+              example: Passionate learner
+            timezone:
+              type: string
+              example: Asia/Ho_Chi_Minh
+            daily_card_goal:
+              type: integer
+              example: 30
+    responses:
+      200:
+        description: Cập nhật thông tin hồ sơ thành công
+      404:
+        description: Không tìm thấy hồ sơ của người dùng
+    """
+    profile = UserProfile.query.filter_by(user_id=user_id).first()
+    if not profile:
+        # Nếu chưa có profile thì tự động tạo mới
+        profile = UserProfile(user_id=user_id)
+        db.session.add(profile)
+
+    data = request.get_json() or {}
+    updatable_fields = [
+        "display_name",
+        "full_name",
+        "avatar_url",
+        "bio",
+        "timezone",
+        "daily_card_goal",
+    ]
+    for field in updatable_fields:
+        if field in data:
+            setattr(profile, field, data[field])
+
+    try:
+        db.session.commit()
+    except Exception as err:
+        db.session.rollback()
+        return jsonify({"error": f"Lỗi cập nhật hồ sơ: {str(err)}"}), 500
+
+    return jsonify(profile.to_dict()), 200
+
+
 # ===========================================================================
 # 7. USER PROFILES CRUD API (Table 2: user_profiles)
 # ===========================================================================
 @profiles_bp.route("", methods=["GET"])
 def list_profiles():
-    """Lấy danh sách hồ sơ người dùng"""
+    """
+    Lấy danh sách hồ sơ người dùng (Table 2: user_profiles)
+    ---
+    tags:
+      - User Profiles
+    parameters:
+      - name: user_id
+        in: query
+        type: integer
+        required: false
+        description: Lọc hồ sơ theo user_id
+    responses:
+      200:
+        description: Danh sách hồ sơ người dùng thành công
+    """
     user_id = request.args.get("user_id", type=int)
     query = UserProfile.query
     if user_id is not None:
@@ -1427,7 +1788,51 @@ def list_profiles():
 
 @profiles_bp.route("", methods=["POST"])
 def create_profile():
-    """Tạo mới hồ sơ người dùng"""
+    """
+    Tạo mới hồ sơ người dùng (Table 2: user_profiles)
+    ---
+    tags:
+      - User Profiles
+    parameters:
+      - name: body
+        in: body
+        required: true
+        schema:
+          type: object
+          required:
+            - user_id
+          properties:
+            user_id:
+              type: integer
+              example: 1
+            display_name:
+              type: string
+              example: Nguyễn Văn A
+            full_name:
+              type: string
+              example: Nguyễn Văn A
+            avatar_url:
+              type: string
+              example: https://avatar.iran.liara.run/public
+            bio:
+              type: string
+              example: Đam mê học tập Spaced Repetition SM-2
+            timezone:
+              type: string
+              default: UTC
+              example: Asia/Ho_Chi_Minh
+            daily_card_goal:
+              type: integer
+              default: 20
+              example: 20
+    responses:
+      201:
+        description: Tạo hồ sơ người dùng thành công
+      400:
+        description: Thiếu trường user_id bắt buộc
+      409:
+        description: Hồ sơ của người dùng này đã tồn tại
+    """
     data = request.get_json(silent=True) or {}
     user_id = data.get("user_id")
     if not user_id:
@@ -1450,7 +1855,23 @@ def create_profile():
 
 @profiles_bp.route("/<int:profile_id>", methods=["GET"])
 def get_profile_by_id(profile_id: int):
-    """Lấy thông tin chi tiết một hồ sơ"""
+    """
+    Lấy thông tin chi tiết một hồ sơ theo profile_id (Table 2: user_profiles)
+    ---
+    tags:
+      - User Profiles
+    parameters:
+      - name: profile_id
+        in: path
+        type: integer
+        required: true
+        description: ID hồ sơ cần truy vấn
+    responses:
+      200:
+        description: Thông tin chi tiết hồ sơ thành công
+      404:
+        description: Không tìm thấy hồ sơ
+    """
     profile = db.session.get(UserProfile, profile_id)
     if not profile:
         return jsonify({"error": f"Không tìm thấy hồ sơ ID {profile_id}"}), 404
@@ -1459,7 +1880,47 @@ def get_profile_by_id(profile_id: int):
 
 @profiles_bp.route("/<int:profile_id>", methods=["PUT"])
 def update_profile_by_id(profile_id: int):
-    """Cập nhật thông tin hồ sơ"""
+    """
+    Cập nhật thông tin hồ sơ người dùng (Table 2: user_profiles)
+    ---
+    tags:
+      - User Profiles
+    parameters:
+      - name: profile_id
+        in: path
+        type: integer
+        required: true
+        description: ID hồ sơ cần cập nhật
+      - name: body
+        in: body
+        required: true
+        schema:
+          type: object
+          properties:
+            display_name:
+              type: string
+              example: Nguyễn Văn B
+            full_name:
+              type: string
+              example: Nguyễn Văn B
+            avatar_url:
+              type: string
+              example: https://avatar.iran.liara.run/public
+            bio:
+              type: string
+              example: Mục tiêu 50 flashcard mỗi ngày
+            timezone:
+              type: string
+              example: Asia/Ho_Chi_Minh
+            daily_card_goal:
+              type: integer
+              example: 30
+    responses:
+      200:
+        description: Cập nhật hồ sơ thành công
+      404:
+        description: Không tìm thấy hồ sơ
+    """
     profile = db.session.get(UserProfile, profile_id)
     if not profile:
         return jsonify({"error": f"Không tìm thấy hồ sơ ID {profile_id}"}), 404
@@ -1480,13 +1941,33 @@ def update_profile_by_id(profile_id: int):
 
 @profiles_bp.route("/<int:profile_id>", methods=["DELETE"])
 def delete_profile_by_id(profile_id: int):
-    """Xóa hồ sơ người dùng"""
+    """
+    Xóa hồ sơ người dùng (Table 2: user_profiles)
+    ---
+    tags:
+      - User Profiles
+    parameters:
+      - name: profile_id
+        in: path
+        type: integer
+        required: true
+        description: ID hồ sơ cần xóa
+    responses:
+      200:
+        description: Đã xóa hồ sơ thành công
+      404:
+        description: Không tìm thấy hồ sơ
+    """
     profile = db.session.get(UserProfile, profile_id)
     if not profile:
         return jsonify({"error": f"Không tìm thấy hồ sơ ID {profile_id}"}), 404
-    db.session.delete(profile)
-    db.session.commit()
-    return jsonify({"message": f"Đã xóa hồ sơ ID {profile_id} thành công"}), 200
+    try:
+        db.session.delete(profile)
+        db.session.commit()
+        return jsonify({"message": f"Đã xóa hồ sơ ID {profile_id} thành công"}), 200
+    except Exception as err:
+        db.session.rollback()
+        return jsonify({"error": f"Lỗi xóa hồ sơ: {str(err)}"}), 500
 
 
 # ===========================================================================

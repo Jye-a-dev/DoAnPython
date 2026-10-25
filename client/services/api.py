@@ -186,6 +186,52 @@ async def login_user(username_or_email: str, password: str = "") -> dict[str, An
         return _handle_http_error(err, "đăng nhập user")
 
 
+async def auth_login(login: str, password: str) -> dict[str, Any]:
+    """Xác thực đăng nhập người dùng qua POST /api/auth/login."""
+    try:
+        client = get_client()
+        payload = {"login": login, "username": login, "email": login, "password": password}
+        try:
+            res = await client.post("/auth/login", json=payload)
+            if res.status_code == 404:
+                res = await client.post("/users/login", json=payload)
+        except Exception:
+            res = await client.post("/users/login", json=payload)
+        res.raise_for_status()
+        return res.json()
+    except Exception as err:
+        return _handle_http_error(err, "đăng nhập")
+
+
+async def auth_register(
+    display_name: str,
+    email: str,
+    password: str,
+    username: Optional[str] = None,
+) -> dict[str, Any]:
+    """Tạo mới tài khoản người dùng qua POST /api/auth/register."""
+    try:
+        client = get_client()
+        uname = username or (email.split("@")[0] if "@" in email else email)
+        payload = {
+            "username": uname,
+            "email": email,
+            "password": password,
+            "display_name": display_name,
+            "full_name": display_name,
+        }
+        try:
+            res = await client.post("/auth/register", json=payload)
+            if res.status_code == 404:
+                res = await client.post("/users", json=payload)
+        except Exception:
+            res = await client.post("/users", json=payload)
+        res.raise_for_status()
+        return res.json()
+    except Exception as err:
+        return _handle_http_error(err, "đăng ký")
+
+
 async def update_user(user_id: int, **fields: Any) -> dict[str, Any]:
     try:
         client = get_client()

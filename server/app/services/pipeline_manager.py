@@ -81,7 +81,7 @@ def start_pipeline(
     port: int = 8000,
     wait_ready: bool = True,
     timeout: float = 40.0,
-) -> subprocess.Popen:
+) -> Optional[subprocess.Popen]:
     """Khởi động tiến trình AI Pipeline độc lập tại Port 8000 và chờ hoàn tất Healthcheck."""
     global _pipeline_process
 
