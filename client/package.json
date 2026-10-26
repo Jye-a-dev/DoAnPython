@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "description": "Flashcard NiceGUI Client",
   "scripts": {
-    "dev": "node ../scripts/dev.js",
-    "start": "node ../scripts/dev.js"
+    "dev": "node ../server/scripts/dev.js",
+    "start": "node ../server/scripts/dev.js"
   }
 }

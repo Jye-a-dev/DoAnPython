@@ -124,35 +124,24 @@ app.add_middleware(
 # ---------------------------------------------------------------------------
 # Schemas
 # ---------------------------------------------------------------------------
-DEFAULT_MAX_WORDS_PER_CHUNK = 150
-
-
 class GenerateRequest(BaseModel):
-    text: str = Field(
-        ..., min_length=1, description="Văn bản bài học cần sinh câu hỏi và đáp án"
-    )
-    max_cards: Optional[int] = Field(
-        default=5,
-        ge=1,
-        le=100,
-        description="Số lượng thẻ tối đa cần sinh",
-    )
-    max_words_per_chunk: Optional[int] = Field(
-        default=DEFAULT_MAX_WORDS_PER_CHUNK,
-        ge=50,
-        le=500,
-        description="Số từ tối đa trong mỗi phân đoạn văn bản cho model",
-    )
+    text: str = Field(..., description="Văn bản bài học cần tạo flashcard")
+    max_cards: int = Field(default=3, ge=1, le=20)
+    max_words_per_chunk: int = Field(default=120, ge=50, le=500)
 
 
-class QAPair(BaseModel):
+class CardItem(BaseModel):
     question: str
     answer: str
 
 
+# Alias for backward-compatibility
+QAPair = CardItem
+
+
 class GenerateResponse(BaseModel):
     count: int
-    cards: List[QAPair]
+    cards: List[CardItem]
     inference_time_seconds: float
 
 
@@ -186,72 +175,53 @@ class HealthResponse(BaseModel):
     response_model=GenerateResponse,
     include_in_schema=False,
 )
-async def pi_generate_flashcards(payload: GenerateRequest) -> Dict[str, Any]:
-    """
-    Tiếp nhận văn bản bài học → Tiền xử lý, chia chunk → Chạy Qwen2.5-0.5B-Instruct →
-    Trả về: {"count": N, "cards": [{"question": "...", "answer": "..."}], "inference_time_seconds": 2.45}.
-    """
-    cleaned_input = payload.text.strip()
-    if not cleaned_input:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Nội dung văn bản không được để trống.",
-        )
-
+async def pi_generate_flashcards(payload: GenerateRequest) -> GenerateResponse:
+    # Đo thời gian suy luận thực tế
     start_time = time.perf_counter()
+
+    # 1. Kiểm tra text rỗng
+    clean_input = payload.text.strip() if payload.text else ""
+    if not clean_input:
+        return GenerateResponse(count=0, cards=[], inference_time_seconds=0.0)
+
+    # 2. Gọi bộ xử lý AI (card_generator)
+    # Lưu ý: Truyền đúng tham số từ payload vào hàm sinh thẻ
     try:
-        from src.cleaners.text_cleaner import clean_text, chunk_text
-
-        cleaned = clean_text(cleaned_input)
-        logger.info(
-            "[/api/pi/generate] Input=%d chars | cleaned=%d chars",
-            len(cleaned_input),
-            len(cleaned),
+        card_generator = get_card_pipeline()
+        cards_data = card_generator.generate(
+            text=clean_input,
+            max_cards=payload.max_cards,
+            max_words_per_chunk=payload.max_words_per_chunk,
         )
-
-        chunks = chunk_text(
-            cleaned,
-            max_words=payload.max_words_per_chunk or DEFAULT_MAX_WORDS_PER_CHUNK,
-        )
-        if not chunks:
-            chunks = [cleaned[:500]] if cleaned else []
-
-        logger.info(
-            "[/api/pi/generate] %d chunks | max_cards=%d",
-            len(chunks),
-            payload.max_cards or 3,
-        )
-
-        pipeline = get_card_pipeline()
-        cards: List[Dict[str, str]] = pipeline.generate_from_chunks(
-            chunks,
-            max_cards_per_chunk=payload.max_cards or 3,
-        )
-
-        if payload.max_cards and payload.max_cards > 0:
-            cards = cards[: payload.max_cards]
-
-        inference_time = round(time.perf_counter() - start_time, 2)
-        logger.info(
-            "[/api/pi/generate] DONE → %d cards in %.2fs", len(cards), inference_time
-        )
-        return {
-            "count": len(cards),
-            "cards": cards,
-            "inference_time_seconds": inference_time,
-        }
-    except HTTPException:
-        raise
-    except Exception as exc:
-        logger.exception(
-            "[/api/pi/generate] UNHANDLED EXCEPTION after %.2fs: %s",
-            time.perf_counter() - start_time,
-            exc,
-        )
+    except Exception as e:
+        logger.exception("Lỗi suy luận AI: %s", str(e))
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Lỗi tiến trình AI: {type(exc).__name__}: {str(exc)}",
+            detail=f"AI generation failed: {str(e)}",
         )
+
+    elapsed_time = round(time.perf_counter() - start_time, 2)
+
+    # 3. Chuẩn hóa dữ liệu AI về đúng schema của response model
+    normalized_cards: List[CardItem] = []
+    for item in cards_data:
+        if isinstance(item, CardItem):
+            normalized_cards.append(item)
+        elif isinstance(item, dict):
+            normalized_cards.append(CardItem(**item))
+        else:
+            normalized_cards.append(
+                CardItem(
+                    question=str(getattr(item, "question", "")),
+                    answer=str(getattr(item, "answer", "")),
+                )
+            )
+
+    return GenerateResponse(
+        count=len(normalized_cards),
+        cards=normalized_cards,
+        inference_time_seconds=elapsed_time,
+    )
 
 
 @app.post(

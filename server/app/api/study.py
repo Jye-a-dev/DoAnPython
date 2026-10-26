@@ -188,3 +188,89 @@ def submit_study_review():
         201,
     )
 
+
+@study_bp.route("/sessions", methods=["GET"])
+def list_study_sessions():
+    """Lấy danh sách các phiên ôn tập"""
+    user_id = request.args.get("user_id", type=int)
+    deck_id = request.args.get("deck_id", type=int)
+    query = StudySession.query
+    if user_id is not None:
+        query = query.filter_by(user_id=user_id)
+    if deck_id is not None:
+        query = query.filter_by(deck_id=deck_id)
+    sessions = query.order_by(StudySession.id.desc()).all()
+    return jsonify([s.to_dict() for s in sessions]), 200
+
+
+@study_bp.route("/sessions/<int:session_id>", methods=["GET"])
+def get_study_session_by_id(session_id: int):
+    """Lấy thông tin chi tiết một phiên ôn tập"""
+    session = db.session.get(StudySession, session_id)
+    if not session:
+        return jsonify({"error": f"Không tìm thấy phiên học ID {session_id}"}), 404
+    return jsonify(session.to_dict()), 200
+
+
+@study_bp.route("/sessions/<int:session_id>", methods=["PUT"])
+def update_study_session_by_id(session_id: int):
+    """Cập nhật phiên ôn tập"""
+    session = db.session.get(StudySession, session_id)
+    if not session:
+        return jsonify({"error": f"Không tìm thấy phiên học ID {session_id}"}), 404
+    data = request.get_json(silent=True) or {}
+    if "total_reviewed" in data:
+        session.total_reviewed = int(data["total_reviewed"])
+    if "ended_at" in data:
+        session.ended_at = datetime.utcnow() if data["ended_at"] else None
+    db.session.commit()
+    return jsonify(session.to_dict()), 200
+
+
+@study_bp.route("/sessions/<int:session_id>", methods=["DELETE"])
+def delete_study_session_by_id(session_id: int):
+    """Xóa phiên ôn tập"""
+    session = db.session.get(StudySession, session_id)
+    if not session:
+        return jsonify({"error": f"Không tìm thấy phiên học ID {session_id}"}), 404
+    db.session.delete(session)
+    db.session.commit()
+    return jsonify({"message": f"Đã xóa phiên học ID {session_id} thành công"}), 200
+
+
+@study_bp.route("/reviews", methods=["GET"])
+def list_study_reviews():
+    """Lấy danh sách các lượt đánh giá SM-2"""
+    session_id = request.args.get("session_id", type=int)
+    card_id = request.args.get("card_id", type=int)
+    user_id = request.args.get("user_id", type=int)
+    query = StudyReview.query
+    if session_id is not None:
+        query = query.filter_by(session_id=session_id)
+    if card_id is not None:
+        query = query.filter_by(card_id=card_id)
+    if user_id is not None:
+        query = query.filter_by(user_id=user_id)
+    reviews = query.order_by(StudyReview.id.desc()).all()
+    return jsonify([r.to_dict() for r in reviews]), 200
+
+
+@study_bp.route("/reviews/<int:review_id>", methods=["GET"])
+def get_study_review_by_id(review_id: int):
+    """Lấy chi tiết một lượt đánh giá SM-2"""
+    review = db.session.get(StudyReview, review_id)
+    if not review:
+        return jsonify({"error": f"Không tìm thấy lượt đánh giá ID {review_id}"}), 404
+    return jsonify(review.to_dict()), 200
+
+
+@study_bp.route("/reviews/<int:review_id>", methods=["DELETE"])
+def delete_study_review_by_id(review_id: int):
+    """Xóa một lượt đánh giá SM-2"""
+    review = db.session.get(StudyReview, review_id)
+    if not review:
+        return jsonify({"error": f"Không tìm thấy lượt đánh giá ID {review_id}"}), 404
+    db.session.delete(review)
+    db.session.commit()
+    return jsonify({"message": f"Đã xóa lượt đánh giá ID {review_id} thành công"}), 200
+

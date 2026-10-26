@@ -1,7 +1,8 @@
 from flask import Blueprint, jsonify, request
+from typing import Any, List
 from app.core.database import db
 from app.models.document import Document
-from app.models.flashcard import Deck, Card
+from app.models.flashcard import Deck, Card, Tag
 from app.services.ai_service import generate_cards_from_document_id
 from app.services.flashcard_service import (
     create_card,
@@ -9,6 +10,7 @@ from app.services.flashcard_service import (
     list_cards,
     update_card,
     delete_card,
+    delete_all_cards,
 )
 from app.validators.card_validator import validate_card_payload
 
@@ -227,3 +229,75 @@ def delete_card_endpoint(card_id: int):
     if not success:
         return jsonify({"error": f"Không tìm thấy flashcard với ID {card_id}"}), 404
     return jsonify({"message": f"Đã xóa flashcard ID {card_id} thành công"}), 200
+
+
+@cards_bp.route("", methods=["DELETE"])
+def delete_all_cards_endpoint():
+    """Xóa toàn bộ flashcards (hoặc lọc theo query param deck_id)"""
+    deck_id_raw = request.args.get("deck_id")
+    deck_id = int(deck_id_raw) if deck_id_raw and deck_id_raw.isdigit() else None
+    count = delete_all_cards(deck_id=deck_id)
+    return (
+        jsonify(
+            {
+                "message": "Đã xóa toàn bộ flashcards thành công",
+                "deleted_count": count,
+            }
+        ),
+        200,
+    )
+
+
+@cards_bp.route("/<int:card_id>/tags", methods=["GET"])
+def get_card_tags_endpoint(card_id: int):
+    """Lấy danh sách các thẻ nhãn của một flashcard"""
+    card = db.session.get(Card, card_id)
+    if not card:
+        return jsonify({"error": f"Không tìm thấy thẻ ID {card_id}"}), 404
+    card_tags_list: Any = getattr(card, "tags", [])
+    return jsonify([t.to_dict() for t in card_tags_list]), 200
+
+
+@cards_bp.route("/<int:card_id>/tags/<int:tag_id>", methods=["POST"])
+def attach_tag_to_card_endpoint(card_id: int, tag_id: int):
+    """Gán trực tiếp nhãn tag_id cho card_id"""
+    card = db.session.get(Card, card_id)
+    tag = db.session.get(Tag, tag_id)
+    if not card or not tag:
+        return jsonify({"error": "Không tìm thấy Card hoặc Tag"}), 404
+    card_tags_list: Any = getattr(card, "tags", [])
+    if tag not in card_tags_list:
+        card_tags_list.append(tag)
+        db.session.commit()
+    return (
+        jsonify(
+            {
+                "message": "Gán nhãn thành công",
+                "tags": [t.to_dict() for t in card_tags_list],
+            }
+        ),
+        200,
+    )
+
+
+@cards_bp.route("/<int:card_id>/tags/<int:tag_id>", methods=["DELETE"])
+def detach_tag_from_card_endpoint(card_id: int, tag_id: int):
+    """Gỡ nhãn tag_id khỏi card_id"""
+    card = db.session.get(Card, card_id)
+    tag = db.session.get(Tag, tag_id)
+    if not card or not tag:
+        return jsonify({"error": "Không tìm thấy Card hoặc Tag"}), 404
+    card_tags_list: Any = getattr(card, "tags", [])
+    if tag in card_tags_list:
+        card_tags_list.remove(tag)
+        db.session.commit()
+    return (
+        jsonify(
+            {
+                "message": "Gỡ nhãn thành công",
+                "tags": [t.to_dict() for t in card_tags_list],
+            }
+        ),
+        200,
+    )
+

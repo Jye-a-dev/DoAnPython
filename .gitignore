@@ -1,25 +1,25 @@
-# Byte-compiled / optimized / cache files
-.pytest_cache/
+# Python & Caches
 **/__pycache__/
 *.py[cod]
+.pytest_cache/
+.nicegui/
+*/.nicegui/
 
-# Virtual environments
+# Environments
 .venv/
 */.venv/
 
-# Database & runtime instances
-instance/
-server/instance/
+# Local Databases & Secrets
 *.db
 *.sqlite3
-
-# Environment files
+instance/
+server/instance/
 .env
+*/.env
 .env.*
 !.env.example
 
-# Pipeline model weights & large dataset artifacts
-pipeline/.venv/
+# Models & Large weights
 pipeline/models_weights/
 pipeline/data/raw/
 pipeline/data/processed/
