@@ -20,9 +20,10 @@ from typing import Any, Dict, List, Optional
 # ---------------------------------------------------------------------------
 _APP_DIR = Path(__file__).resolve().parent  # pipeline/app
 _PIPELINE_DIR = _APP_DIR.parent  # pipeline/
+_PROJECT_ROOT = _PIPELINE_DIR.parent  # root
 _VENV_SITE_PACKAGES = _PIPELINE_DIR / ".venv" / "Lib" / "site-packages"
 
-for _p in [str(_PIPELINE_DIR), str(_APP_DIR), str(_VENV_SITE_PACKAGES)]:
+for _p in [str(_PROJECT_ROOT), str(_PIPELINE_DIR), str(_APP_DIR), str(_VENV_SITE_PACKAGES)]:
     if os.path.exists(_p) and _p not in sys.path:
         sys.path.insert(0, _p)
 
@@ -175,21 +176,18 @@ class HealthResponse(BaseModel):
     response_model=GenerateResponse,
     include_in_schema=False,
 )
-async def pi_generate_flashcards(payload: GenerateRequest) -> GenerateResponse:
-    # Đo thời gian suy luận thực tế
+async def generate_flashcards_endpoint(payload: GenerateRequest):
     start_time = time.perf_counter()
 
-    # 1. Kiểm tra text rỗng
-    clean_input = payload.text.strip() if payload.text else ""
-    if not clean_input:
-        return GenerateResponse(count=0, cards=[], inference_time_seconds=0.0)
+    clean_text_input = payload.text.strip() if payload.text else ""
+    if not clean_text_input:
+        return {"count": 0, "cards": [], "inference_time_seconds": 0.0}
 
-    # 2. Gọi bộ xử lý AI (card_generator)
-    # Lưu ý: Truyền đúng tham số từ payload vào hàm sinh thẻ
+    # Gọi generator
     try:
         card_generator = get_card_pipeline()
-        cards_data = card_generator.generate(
-            text=clean_input,
+        cards = card_generator.generate_cards_from_text(
+            text=clean_text_input,
             max_cards=payload.max_cards,
             max_words_per_chunk=payload.max_words_per_chunk,
         )
@@ -202,26 +200,11 @@ async def pi_generate_flashcards(payload: GenerateRequest) -> GenerateResponse:
 
     elapsed_time = round(time.perf_counter() - start_time, 2)
 
-    # 3. Chuẩn hóa dữ liệu AI về đúng schema của response model
-    normalized_cards: List[CardItem] = []
-    for item in cards_data:
-        if isinstance(item, CardItem):
-            normalized_cards.append(item)
-        elif isinstance(item, dict):
-            normalized_cards.append(CardItem(**item))
-        else:
-            normalized_cards.append(
-                CardItem(
-                    question=str(getattr(item, "question", "")),
-                    answer=str(getattr(item, "answer", "")),
-                )
-            )
-
-    return GenerateResponse(
-        count=len(normalized_cards),
-        cards=normalized_cards,
-        inference_time_seconds=elapsed_time,
-    )
+    return {
+        "count": len(cards),
+        "cards": cards,
+        "inference_time_seconds": elapsed_time,
+    }
 
 
 @app.post(

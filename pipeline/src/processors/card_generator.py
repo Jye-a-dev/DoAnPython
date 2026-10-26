@@ -98,14 +98,17 @@ class FlashcardPipeline:
             trust_remote_code=True,
         )
 
+        self._device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        if self._device.type == "cpu":
+            torch.set_num_threads(4)
+
         self._model = AutoModelForCausalLM.from_pretrained(
             resolved_path,
             local_files_only=local_files_only,
-            torch_dtype=torch.float32,
+            dtype=torch.bfloat16,
             trust_remote_code=True,
         )
 
-        self._device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self._model.to(self._device)
         self._model.eval()
 
@@ -151,17 +154,19 @@ class FlashcardPipeline:
         ).to(self._device)
 
         input_len = inputs.input_ids.shape[1]
-        gen_kwargs: Dict[str, Any] = {
-            "max_new_tokens": min(350, max(120, max_cards * 120)),
-            "do_sample": False,
-            "repetition_penalty": 1.1,
+        generation_config: Dict[str, Any] = {
+            "max_new_tokens": min(120 * max_cards, 256),
+            "temperature": 0.2,
+            "top_p": 0.85,
+            "repetition_penalty": 1.15,
+            "do_sample": True,
             "pad_token_id": self._tokenizer.pad_token_id
             or self._tokenizer.eos_token_id,
             "eos_token_id": self._tokenizer.eos_token_id,
         }
 
-        with torch.no_grad():
-            output_ids = self._model.generate(**inputs, **gen_kwargs)
+        with torch.inference_mode():
+            output_ids = self._model.generate(**inputs, **generation_config)
 
         generated_tokens = output_ids[0][input_len:]
         raw_text = self._tokenizer.decode(generated_tokens, skip_special_tokens=True)
@@ -270,6 +275,58 @@ class FlashcardPipeline:
             cards = cards[:max_cards]
         return cards
 
+    @staticmethod
+    def chunk_text(text: str, max_words: int = 100) -> list[str]:
+        """Làm sạch văn bản và phân đoạn (chunking)."""
+        clean_input = text.strip() if text else ""
+        if not clean_input:
+            return []
+        try:
+            from ..cleaners.text_cleaner import clean_text, chunk_text as _chunk_text
+        except (ImportError, ValueError):
+            try:
+                from src.cleaners.text_cleaner import (
+                    clean_text,
+                    chunk_text as _chunk_text,
+                )
+            except ImportError:
+                from pipeline.src.cleaners.text_cleaner import (
+                    clean_text,
+                    chunk_text as _chunk_text,
+                )
+        cleaned = clean_text(clean_input)
+        chunks = _chunk_text(cleaned, max_words=max_words)
+        return chunks if chunks else ([cleaned] if cleaned else [])
+
+    def generate_cards_from_text(
+        self, text: str, max_cards: int = 4, max_words_per_chunk: int = 100
+    ) -> list[dict]:
+        # 1. Làm sạch và chia chunk
+        chunks = self.chunk_text(text, max_words=max_words_per_chunk)
+        all_cards = []
+
+        for idx, chunk in enumerate(chunks, 1):
+            raw_output = self._infer(chunk, max_cards=max_cards)
+            logger.info(
+                f"[DEBUG RAW MODEL OUTPUT for chunk '{chunk[:40]}...']:\n{raw_output}"
+            )
+
+            # 2. Gọi hàm parse đa tầng (ưu tiên JSON)
+            cards = self.parse_flashcard_output(raw_output)
+            logger.info(
+                f"[Chunk {idx}/{len(chunks)}] → {len(cards)} cards | raw_len={len(raw_output)} chars"
+            )
+
+            all_cards.extend(cards)
+            if len(all_cards) >= max_cards:
+                break
+
+        # 3. Cắt đúng max_cards yêu cầu và log kết quả nghiệm thu
+        final_cards = all_cards[:max_cards]
+        logger.info(f"Tổng thẻ từ {len(chunks)} chunks: {len(final_cards)}")
+        logger.info(f"[MODEL OUTPUT CARDS]: {final_cards}")
+        return final_cards
+
     def generate(
         self,
         text: str,
@@ -277,37 +334,11 @@ class FlashcardPipeline:
         max_words_per_chunk: int = 120,
     ) -> List[Dict[str, str]]:
         """Sinh danh sách thẻ Flashcard từ văn bản bài học."""
-        clean_input = text.strip() if text else ""
-        if not clean_input:
-            logger.warning("[generate] Input text rỗng.")
-            return []
-
-        logger.info(f"[INPUT TEXT]: {text[:80]}...")
-
-        try:
-            from ..cleaners.text_cleaner import clean_text, chunk_text
-        except (ImportError, ValueError):
-            try:
-                from src.cleaners.text_cleaner import clean_text, chunk_text
-            except ImportError:
-                from pipeline.src.cleaners.text_cleaner import clean_text, chunk_text
-
-        cleaned = clean_text(clean_input)
-        chunks = chunk_text(cleaned, max_words=max_words_per_chunk)
-        if not chunks:
-            chunks = [cleaned[:1024]] if cleaned else []
-
-        cards_data: List[Dict[str, str]] = self.generate_from_chunks(
-            chunks,
-            max_cards_per_chunk=max_cards,
-            total_max_cards=max_cards,
+        return self.generate_cards_from_text(
+            text=text,
+            max_cards=max_cards,
+            max_words_per_chunk=max_words_per_chunk,
         )
-
-        if max_cards and max_cards > 0:
-            cards_data = cards_data[:max_cards]
-
-        logger.info(f"[MODEL OUTPUT CARDS]: {cards_data}")
-        return cards_data
 
     @staticmethod
     def export_to_file(
@@ -339,6 +370,20 @@ def generate(
     """Module-level generator proxy."""
     pipeline = get_default_pipeline()
     return pipeline.generate(
+        text=text,
+        max_cards=max_cards,
+        max_words_per_chunk=max_words_per_chunk,
+    )
+
+
+def generate_cards_from_text(
+    text: str,
+    max_cards: int = 4,
+    max_words_per_chunk: int = 100,
+) -> list[dict]:
+    """Module-level generator proxy using generate_cards_from_text."""
+    pipeline = get_default_pipeline()
+    return pipeline.generate_cards_from_text(
         text=text,
         max_cards=max_cards,
         max_words_per_chunk=max_words_per_chunk,

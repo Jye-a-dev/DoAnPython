@@ -119,12 +119,24 @@ def generate_from_raw_text():
     data = request.get_json(silent=True) or {}
     text = data.get("text")
     deck_id = data.get("deck_id")
+    max_cards = data.get("max_cards", 3)
+    try:
+        max_cards = int(max_cards)
+    except (ValueError, TypeError):
+        max_cards = 3
 
     if not text or not isinstance(text, str) or not text.strip():
         return jsonify({"error": "Văn bản bài học không được để trống"}), 400
 
     try:
-        generated_cards = generate_flashcards_service(text)
+        pipeline_data = generate_flashcards_service(text, max_cards=max_cards)
+        if isinstance(pipeline_data, dict):
+            generated_cards = pipeline_data.get("cards", [])
+            inference_time_seconds = pipeline_data.get("inference_time_seconds", 0.0)
+        else:
+            generated_cards = pipeline_data
+            inference_time_seconds = 0.0
+
         saved_cards = []
         for item in generated_cards:
             card = Card(
@@ -139,8 +151,13 @@ def generate_from_raw_text():
         return (
             jsonify(
                 {
-                    "count": len(saved_cards),
+                    "count": (
+                        pipeline_data.get("count", len(saved_cards))
+                        if isinstance(pipeline_data, dict)
+                        else len(saved_cards)
+                    ),
                     "cards": [c.to_dict() for c in saved_cards],
+                    "inference_time_seconds": inference_time_seconds,
                 }
             ),
             201,

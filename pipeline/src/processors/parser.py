@@ -44,6 +44,8 @@ PATTERN_NUMBERED = re.compile(
 
 INVALID_PLACEHOLDERS = {
     "string",
+    "...",
+    "…",
     "câu hỏi bằng tiếng việt?",
     "câu hỏi bằng tiếng việt",
     "đáp án ngắn gọn bằng tiếng việt.",
@@ -52,6 +54,14 @@ INVALID_PLACEHOLDERS = {
     "answer",
     "nội dung câu hỏi",
     "nội dung câu trả lời",
+    "thủ đô của việt nam là gì?",
+    "thủ đô của việt nam là gì",
+    "thành phố hà nội.",
+    "thành phố hà nội",
+    "đỉnh núi cao nhất việt nam là đỉnh nào?",
+    "đỉnh núi cao nhất việt nam là đỉnh nào",
+    "đỉnh fansipan.",
+    "đỉnh fansipan",
 }
 
 

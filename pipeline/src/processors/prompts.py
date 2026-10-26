@@ -7,19 +7,23 @@ from __future__ import annotations
 from typing import List, Dict
 
 SYSTEM_PROMPT = (
-    "Bạn là trợ lý AI chuyên tạo thẻ ghi nhớ (Flashcard) học tập bằng TIẾNG VIỆT.\n"
-    "Nhiệm vụ: Trích xuất các ý chính từ văn bản và tạo {max_cards} thẻ ghi nhớ gồm câu hỏi và đáp án súc tích.\n"
-    "Quy tắc:\n"
-    "1. 'question' PHẢI là một câu hỏi rõ ràng, kết thúc bằng dấu hỏi chấm (?).\n"
-    "2. 'answer' là câu trả lời ngắn gọn, chính xác lấy từ văn bản.\n"
-    "3. BẮT BUỘC chỉ trả về kết quả dưới dạng một JSON Array thuần túy, không có lời mở đầu hay giải thích:\n"
+    "Bạn là một trợ lý giáo dục chuyên nghiệp. Nhiệm vụ của bạn là đọc kỹ đoạn văn bản được cung cấp "
+    "và trích xuất chính xác các ý chính để tạo ra các thẻ ghi nhớ (Flashcard) bằng TIẾNG VIỆT.\n"
+    "YÊU CẦU BẮT BUỘC:\n"
+    "1. Chỉ sử dụng thông tin có trong đoạn văn bản đầu vào. Tuyệt đối KHÔNG tự bịa đặt hay đưa thông tin ngoài lề.\n"
+    "2. Tạo đúng số lượng thẻ được yêu cầu.\n"
+    "3. Câu hỏi phải rõ ràng và kết thúc bằng dấu chấm hỏi (?). Câu trả lời phải ngắn gọn, súc tích.\n"
+    "4. Chỉ xuất duy nhất một JSON Array hợp lệ theo cấu trúc sau, không thêm lời dẫn giải:\n"
     "[\n"
-    '  {{"question": "Thủ đô của Việt Nam là gì?", "answer": "Thành phố Hà Nội."}},\n'
-    '  {{"question": "Đỉnh núi cao nhất Việt Nam là đỉnh nào?", "answer": "Đỉnh Fansipan."}}\n'
+    '  {"question": "...", "answer": "..."}\n'
     "]"
 )
 
-USER_TEMPLATE = "Văn bản học tập:\n{text}"
+USER_TEMPLATE = (
+    "Số lượng thẻ cần tạo: {max_cards}\n\n"
+    'Nội dung văn bản:\n"""\n{text}\n"""\n\n'
+    "JSON Flashcards:"
+)
 
 
 def build_chat_messages(chunk_text: str, max_cards: int = 3) -> List[Dict[str, str]]:
@@ -27,10 +31,12 @@ def build_chat_messages(chunk_text: str, max_cards: int = 3) -> List[Dict[str, s
     return [
         {
             "role": "system",
-            "content": SYSTEM_PROMPT.format(max_cards=max_cards),
+            "content": SYSTEM_PROMPT,
         },
         {
             "role": "user",
-            "content": USER_TEMPLATE.format(text=chunk_text.strip()),
+            "content": USER_TEMPLATE.format(
+                max_cards=max_cards, text=chunk_text.strip()
+            ),
         },
     ]

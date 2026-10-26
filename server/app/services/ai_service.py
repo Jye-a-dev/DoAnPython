@@ -79,31 +79,46 @@ def get_pipeline():
     return _fallback_pipeline
 
 
-def generate_flashcards_service(text: str) -> List[Dict[str, str]]:
+def generate_flashcards_service(
+    text: str, max_cards: int = 3, max_words_per_chunk: int = 150
+) -> Dict[str, Any]:
     """
     Send lesson text to AI Pipeline Microservice (POST /api/pi/generate)
-    and return parsed Q&A pairs.
+    and return response dict containing count, cards, and inference_time_seconds.
     """
     if not text or not text.strip():
-        return []
+        return {"count": 0, "cards": [], "inference_time_seconds": 0.0}
 
     candidate_urls = [
         f"{AI_PIPELINE_URL}/pi/generate",
         f"{AI_PIPELINE_URL}/generate",
     ]
+    payload = {
+        "text": text.strip(),
+        "max_cards": max_cards,
+        "max_words_per_chunk": max_words_per_chunk,
+    }
     last_exc = None
     for target_url in candidate_urls:
         try:
             data = _post_json(
                 target_url,
-                {"text": text.strip(), "max_words_per_chunk": 150},
+                payload,
                 timeout=120.0,
             )
+            if isinstance(data, dict):
+                return {
+                    "count": data.get("count", len(data.get("cards", []))),
+                    "cards": data.get("cards", []),
+                    "inference_time_seconds": data.get("inference_time_seconds", 0.0),
+                }
             if isinstance(data, list):
-                return data
-            if isinstance(data, dict) and "cards" in data:
-                return data["cards"]
-            return []
+                return {
+                    "count": len(data),
+                    "cards": data,
+                    "inference_time_seconds": 0.0,
+                }
+            return {"count": 0, "cards": [], "inference_time_seconds": 0.0}
         except (URLError, HTTPError, TimeoutError, OSError) as exc:
             last_exc = exc
             continue
@@ -117,8 +132,17 @@ def generate_flashcards_service(text: str) -> List[Dict[str, str]]:
         from pipeline.src.cleaners.text_cleaner import clean_text, chunk_text
 
         cleaned = clean_text(text)
-        chunks = chunk_text(cleaned, max_words=150)
-        return pipeline.generate_from_chunks(chunks) if chunks else []
+        chunks = chunk_text(cleaned, max_words=max_words_per_chunk)
+        cards = (
+            pipeline.generate_from_chunks(chunks, max_cards_per_chunk=max_cards)
+            if chunks
+            else []
+        )
+        return {
+            "count": len(cards),
+            "cards": cards,
+            "inference_time_seconds": 0.0,
+        }
     raise RuntimeError(
         f"Lỗi kết nối tới AI Pipeline Microservice (Port 8000): {str(last_exc)}"
     ) from last_exc
@@ -205,7 +229,12 @@ def generate_cards_from_document_id(
 
     try:
         # 3. Call AI Pipeline Microservice
-        generated_pairs = generate_flashcards_service(extracted_text)
+        pipeline_res = generate_flashcards_service(extracted_text)
+        generated_pairs = (
+            pipeline_res.get("cards", [])
+            if isinstance(pipeline_res, dict)
+            else pipeline_res
+        )
 
         # 4. Save cards to database
         for pair in generated_pairs:
