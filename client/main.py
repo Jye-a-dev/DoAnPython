@@ -22,6 +22,7 @@ from nicegui import ui
 from pages.home import render_home_page
 from pages.study import render_study_page
 from pages.decks import render_decks_page
+from pages.cards import render_cards_page
 from pages.login import render_login_page
 from pages.register import render_register_page
 from pages.profile import render_profile_page
@@ -64,12 +65,20 @@ async def decks_route() -> None:
     await render_decks_page()
 
 
+@ui.page("/cards")
+async def cards_route() -> None:
+    """Route bảo vệ (Protected): Quản lý toàn bộ flashcards riêng của User (CRUD Cards)."""
+    if not require_auth():
+        return
+    await render_cards_page()
+
+
 @ui.page("/study")
-async def study_route(deck_id: Optional[int] = None) -> None:
+async def study_route(deck_id: Optional[int] = None, tag: Optional[str] = None) -> None:
     """Route bảo vệ (Protected): Lặp lại ngắt quãng SM-2 Focus Mode kèm Hotkeys 1-4 & Space."""
     if not require_auth():
         return
-    await render_study_page(deck_id=deck_id)
+    await render_study_page(deck_id=deck_id, tag=tag)
 
 
 @ui.page("/profile")
@@ -84,6 +93,7 @@ async def profile_route() -> None:
 index = home_route
 render_study = study_route
 render_decks = decks_route
+render_cards = cards_route
 render_login = login_route
 render_register = register_route
 render_profile = profile_route

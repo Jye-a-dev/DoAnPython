@@ -1,11 +1,10 @@
 from __future__ import annotations
 
 import asyncio
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Set
 from nicegui import ui
 
 from components import (
-    TOKENS,
     app_shell,
     empty_deck_state,
     network_error_banner,
@@ -13,16 +12,22 @@ from components import (
     render_srs_action_bar,
     show_toast,
 )
+from components.study_congrats import render_study_congrats
+from components.study_header import render_study_header
 from services import api
 from services.auth_guard import get_current_user
 
 
-async def render_study_page(deck_id: Optional[int] = None) -> None:
-    """Trang Ôn tập Lặp lại Ngắt quãng (SM-2) chế độ Focus Mode tối giản."""
+async def render_study_page(
+    deck_id: Optional[int] = None, tag: Optional[str] = None
+) -> None:
+    """Trang Ôn tập Lặp lại Ngắt quãng (SM-2) chế độ Focus Mode tối giản tích hợp Favorites & Lọc Tag."""
     with app_shell(
         active_tab="study", title="EduFlash AI - Chế Độ Ôn Tập Lặp Lại Ngắt Quãng SM-2"
     ):
-        # Thiết lập Focus Mode: ẩn thanh cuộn phụ ngoài màn hình
+        cur_user = get_current_user() or {}
+        active_user_id = int(cur_user.get("id") or cur_user.get("user_id") or 1)
+
         ui.add_head_html("""
         <style>
         .study-focus-container {
@@ -38,15 +43,15 @@ async def render_study_page(deck_id: Optional[int] = None) -> None:
         </style>
         """)
 
+        selected_tag_state = {"value": tag}
         study_container = ui.column().classes("w-full")
 
         async def load_study_data() -> None:
-            """Tải dữ liệu bài học và thẻ, hiển thị Error Banner hoặc Empty State chuẩn."""
+            """Tải dữ liệu bài học, thẻ, danh sách yêu thích và áp dụng bộ lọc tag."""
+            if getattr(ui.context.client, "is_deleted", False):
+                return
             study_container.clear()
             with study_container:
-                # -----------------------------------------------------------
-                # 1. TẢI DỮ LIỆU DECK VÀ CARDS TỪ BACKEND API
-                # -----------------------------------------------------------
                 active_deck: Optional[Dict[str, Any]] = None
                 deck_resp: Any = None
                 if deck_id is not None:
@@ -54,9 +59,14 @@ async def render_study_page(deck_id: Optional[int] = None) -> None:
                     if isinstance(deck_resp, dict) and "id" in deck_resp:
                         active_deck = deck_resp
 
-                cards_resp = await api.get_cards(deck_id=deck_id)
+                cards_resp = await api.get_cards(
+                    deck_id=deck_id, user_id=active_user_id
+                )
+                favorites_resp = await api.get_favorites(user_id=active_user_id)
 
-                # Kiểm tra lỗi mất kết nối máy chủ backend
+                if getattr(ui.context.client, "is_deleted", False):
+                    return
+
                 if api.is_connection_error(cards_resp) or (
                     deck_id is not None and api.is_connection_error(deck_resp)
                 ):
@@ -66,7 +76,6 @@ async def render_study_page(deck_id: Optional[int] = None) -> None:
                     )
                     return
 
-                # Kiểm tra phản hồi lỗi nghiệp vụ
                 if isinstance(cards_resp, dict) and cards_resp.get("error"):
                     network_error_banner(
                         on_retry=load_study_data,
@@ -76,25 +85,64 @@ async def render_study_page(deck_id: Optional[int] = None) -> None:
                     )
                     return
 
-                cards_pool: List[Dict[str, Any]] = []
-                if isinstance(cards_resp, list):
-                    cards_pool = [c for c in cards_resp if isinstance(c, dict)]
+                raw_cards: List[Dict[str, Any]] = (
+                    [c for c in cards_resp if isinstance(c, dict)]
+                    if isinstance(cards_resp, list)
+                    else []
+                )
 
-                # -----------------------------------------------------------
-                # 2. XỬ LÝ TRẠNG THÁI RỖNG (EMPTY STATE)
-                # -----------------------------------------------------------
+                card_fav_map: Dict[int, int] = {}
+                if isinstance(favorites_resp, list):
+                    for fav in favorites_resp:
+                        cid = fav.get("card_id")
+                        if cid:
+                            card_fav_map[cid] = fav.get("id", 0)
+
+                available_tags: Set[str] = set()
+                for c in raw_cards:
+                    c_tags = c.get("tags", [])
+                    if isinstance(c_tags, list):
+                        for t in c_tags:
+                            t_name = t if isinstance(t, str) else t.get("name", "")
+                            if t_name and t_name.strip():
+                                available_tags.add(t_name.strip())
+
+                active_tag_filter = selected_tag_state["value"]
+                cards_pool: List[Dict[str, Any]] = raw_cards
+                if active_tag_filter and active_tag_filter != "all":
+                    cards_pool = []
+                    for c in raw_cards:
+                        c_tags = c.get("tags", [])
+                        matches = False
+                        if isinstance(c_tags, list):
+                            for t in c_tags:
+                                t_name = t if isinstance(t, str) else t.get("name", "")
+                                if (
+                                    t_name.strip().lower()
+                                    == active_tag_filter.strip().lower()
+                                ):
+                                    matches = True
+                                    break
+                        if matches:
+                            cards_pool.append(c)
+
                 if not cards_pool:
                     deck_name = (
                         active_deck.get("title", "Bộ thẻ")
                         if active_deck
                         else "Hệ thống"
                     )
-                    empty_deck_state(
-                        title="Bạn chưa có bài học hoặc thẻ ghi nhớ nào!",
-                        description=(
+                    desc_msg = (
+                        f"Không tìm thấy thẻ nào có nhãn '#{active_tag_filter}' trong {deck_name}."
+                        if active_tag_filter and active_tag_filter != "all"
+                        else (
                             f"{deck_name} hiện chưa có thẻ nào đến hạn ôn tập hoặc chưa được tạo nội dung. "
                             "Hãy vào Studio để tự động tạo bộ thẻ mới từ bài giảng."
-                        ),
+                        )
+                    )
+                    empty_deck_state(
+                        title="Không có thẻ nào phù hợp để ôn tập!",
+                        description=desc_msg,
                         icon="school",
                         action_text="Tạo bài học mới",
                         action_url="/",
@@ -103,17 +151,8 @@ async def render_study_page(deck_id: Optional[int] = None) -> None:
                     )
                     return
 
-                # -----------------------------------------------------------
-                # 3. TẠO PHIÊN HỌC (STUDY SESSION) & SETUP FOCUS MODE
-                # -----------------------------------------------------------
                 session_id: int = 1
                 target_deck_id = deck_id or cards_pool[0].get("deck_id", 1)
-                cur_user = get_current_user()
-                active_user_id = (
-                    (cur_user.get("id") or cur_user.get("user_id") or 1)
-                    if cur_user
-                    else 1
-                )
                 sess_resp = await api.create_study_session(
                     deck_id=target_deck_id, user_id=active_user_id
                 )
@@ -129,135 +168,98 @@ async def render_study_page(deck_id: Optional[int] = None) -> None:
                 }
 
                 with ui.column().classes(
-                    "study-focus-container w-full max-w-2xl mx-auto gap-6"
+                    "study-focus-container w-full max-w-2xl mx-auto gap-5"
                 ):
-                    # Header Tiến trình & Streak
-                    with ui.column().classes("w-full gap-2 pt-2"):
-                        with ui.row().classes("items-center justify-between w-full"):
-                            with ui.row().classes("items-center gap-2"):
-                                ui.icon("school", size="22px").classes(
-                                    f"text-{TOKENS['primary']}"
-                                )
-                                deck_title = (
-                                    active_deck.get("title")
-                                    if active_deck
-                                    else f"Phiên Ôn Tập ({total_cards} thẻ)"
-                                )
-                                ui.label(deck_title).classes(
-                                    "font-extrabold text-base text-slate-900 tracking-tight truncate max-w-[280px]"
-                                )
+                    deck_title = (
+                        active_deck.get("title")
+                        if active_deck
+                        else f"Phiên Ôn Tập ({total_cards} thẻ)"
+                    )
 
-                            with ui.row().classes("items-center gap-2"):
-                                with ui.row().classes(
-                                    "items-center gap-1 px-3 py-1 rounded-full bg-amber-50 border border-amber-200 text-amber-700 font-black text-xs shadow-2xs"
-                                ):
-                                    ui.label("🔥")
-                                    ui.label("Streak: 3 ngày")
+                    async def handle_toggle_card_favorite() -> None:
+                        if state["current_index"] >= total_cards:
+                            return
+                        curr_card = cards_pool[state["current_index"]]
+                        cid = curr_card.get("id")
+                        if not cid:
+                            return
 
-                                ui.button(
-                                    icon="close",
-                                    on_click=lambda: ui.navigate.to("/decks"),
-                                ).props("flat dense round").classes(
-                                    "text-slate-400 hover:text-slate-700"
+                        if cid in card_fav_map:
+                            fid = card_fav_map[cid]
+                            res = await api.delete_favorite(fid)
+                            if isinstance(res, dict) and res.get("error"):
+                                show_toast(
+                                    res.get("message", "Lỗi hủy yêu thích"), "negative"
                                 )
-
-                        progress_bar = (
-                            ui.linear_progress(
-                                value=1.0 / total_cards,
-                                show_value=False,
+                            else:
+                                card_fav_map.pop(cid, None)
+                                header_refs["bookmark_star_btn"].props(
+                                    "icon=star_border"
+                                )
+                                header_refs["bookmark_star_btn"].classes(
+                                    add="text-slate-400 hover:text-amber-500",
+                                    remove="text-amber-500",
+                                )
+                                header_refs["bookmark_star_btn"].tooltip(
+                                    "Thêm vào yêu thích"
+                                )
+                                show_toast("Đã bỏ thẻ khỏi danh sách yêu thích", "info")
+                        else:
+                            res = await api.add_favorite(
+                                user_id=active_user_id, card_id=cid
                             )
-                            .props("rounded")
-                            .classes(
-                                f"w-full h-2 text-{TOKENS['primary']} bg-slate-100"
-                            )
-                        )
+                            if isinstance(res, dict) and res.get("error"):
+                                show_toast(
+                                    res.get("message", "Lỗi thêm yêu thích"), "negative"
+                                )
+                            else:
+                                new_fid = (
+                                    res.get("id", 1) if isinstance(res, dict) else 1
+                                )
+                                card_fav_map[cid] = new_fid
+                                header_refs["bookmark_star_btn"].props("icon=star")
+                                header_refs["bookmark_star_btn"].classes(
+                                    add="text-amber-500",
+                                    remove="text-slate-400 hover:text-amber-500",
+                                )
+                                header_refs["bookmark_star_btn"].tooltip(
+                                    "Bỏ yêu thích thẻ này"
+                                )
+                                show_toast(
+                                    "Đã lưu thẻ vào mục yêu thích! ⭐", "positive"
+                                )
 
-                        with ui.row().classes(
-                            "items-center justify-between w-full text-xs font-semibold text-slate-500"
-                        ):
-                            counter_label = ui.label(f"Thẻ 1 / {total_cards}")
-                            remaining_label = ui.label(
-                                f"Còn lại: {total_cards - 1} thẻ"
-                            )
+                    async def handle_tag_filter_change(selected_val: str) -> None:
+                        selected_tag_state["value"] = selected_val
+                        await load_study_data()
 
-                    # FLASHCARD CONTAINER
+                    header_refs = render_study_header(
+                        deck_title=deck_title or "",
+                        total_cards=total_cards,
+                        available_tags=available_tags,
+                        selected_tag=selected_tag_state["value"],
+                        on_tag_change=handle_tag_filter_change,
+                        on_toggle_favorite=handle_toggle_card_favorite,
+                    )
+
                     card_slot = ui.column().classes(
                         "card-transition-wrapper w-full items-center justify-center min-h-[340px] opacity-100 translate-x-0"
                     )
 
-                    # CONGRATS CONTAINER
-                    congrats_container = ui.column().classes(
-                        "w-full items-center text-center py-12 gap-5 bg-white border border-slate-200 rounded-3xl p-8 shadow-xl"
+                    async def restart_session():
+                        state["current_index"] = 0
+                        state["reviewed_count"] = 0
+                        congrats_container.set_visibility(False)
+                        action_bar_ref["set_active"](True)
+                        action_bar_ref["container"].set_visibility(True)
+                        card_slot.set_visibility(True)
+                        await update_current_card_ui()
+
+                    congrats_container = render_study_congrats(
+                        total_cards=total_cards,
+                        on_restart=restart_session,
                     )
                     congrats_container.set_visibility(False)
-
-                    with congrats_container:
-                        with ui.element("div").classes(
-                            "w-20 h-20 rounded-3xl bg-emerald-50 text-emerald-600 flex items-center justify-center shadow-sm border border-emerald-200"
-                        ):
-                            ui.icon("emoji_events", size="44px")
-
-                        ui.label("Tuyệt Vời! Đã Hoàn Thành Phiên Ôn Tập").classes(
-                            "text-2xl font-black text-slate-900 tracking-tight"
-                        )
-
-                        ui.label(
-                            f"Bạn đã hoàn thành việc ôn luyện toàn bộ {total_cards} thẻ theo chu kỳ thuật toán SM-2. "
-                            "Khoảng cách ôn tập tiếp theo đã được hệ thống tính toán và tự động cập nhật."
-                        ).classes("text-sm text-slate-600 max-w-md leading-relaxed")
-
-                        with ui.row().classes(
-                            "items-center justify-center gap-6 py-4 w-full border-y border-slate-100 my-2"
-                        ):
-                            with ui.column().classes("items-center gap-0.5"):
-                                ui.label(str(total_cards)).classes(
-                                    "text-2xl font-black text-indigo-600"
-                                )
-                                ui.label("Thẻ đã ôn").classes(
-                                    "text-xs font-semibold text-slate-500"
-                                )
-
-                            with ui.column().classes("items-center gap-0.5"):
-                                ui.label("100%").classes(
-                                    "text-2xl font-black text-emerald-600"
-                                )
-                                ui.label("Hoàn thành").classes(
-                                    "text-xs font-semibold text-slate-500"
-                                )
-
-                            with ui.column().classes("items-center gap-0.5"):
-                                ui.label("🔥 +1").classes(
-                                    "text-2xl font-black text-amber-500"
-                                )
-                                ui.label("Chuỗi Streak").classes(
-                                    "text-xs font-semibold text-slate-500"
-                                )
-
-                        with ui.row().classes("gap-4 mt-2"):
-                            ui.button(
-                                "Xem Thư Viện Deck",
-                                icon="folder_special",
-                                on_click=lambda: ui.navigate.to("/decks"),
-                            ).classes(
-                                f"bg-{TOKENS['primary']} hover:bg-{TOKENS['primary_hover']} text-white font-bold px-6 py-2.5 rounded-xl shadow-md"
-                            )
-
-                            async def restart_session():
-                                state["current_index"] = 0
-                                state["reviewed_count"] = 0
-                                congrats_container.set_visibility(False)
-                                action_bar_ref["set_active"](True)
-                                action_bar_ref["container"].set_visibility(True)
-                                card_slot.set_visibility(True)
-                                await update_current_card_ui()
-
-                            ui.button(
-                                "Ôn Tập Lại Bộ Này",
-                                icon="replay",
-                                on_click=restart_session,
-                            ).props('text-color="black"').classes(
-                                "bg-white hover:bg-slate-100 !text-black text-black font-bold px-6 py-2.5 rounded-xl border border-slate-200"
-                            )
 
                     async def update_current_card_ui() -> None:
                         card_slot.clear()
@@ -275,11 +277,36 @@ async def render_study_page(deck_id: Optional[int] = None) -> None:
                             )
                             return
 
-                        counter_label.text = f"Thẻ {idx + 1} / {total_cards}"
-                        remaining_label.text = f"Còn lại: {total_cards - idx - 1} thẻ"
-                        progress_bar.set_value((idx + 1) / total_cards)
+                        header_refs["counter_label"].text = (
+                            f"Thẻ {idx + 1} / {total_cards}"
+                        )
+                        header_refs["remaining_label"].text = (
+                            f"Còn lại: {total_cards - idx - 1} thẻ"
+                        )
+                        header_refs["progress_bar"].set_value((idx + 1) / total_cards)
 
                         current_card_data = cards_pool[idx]
+                        curr_cid = current_card_data.get("id")
+
+                        if curr_cid and curr_cid in card_fav_map:
+                            header_refs["bookmark_star_btn"].props("icon=star")
+                            header_refs["bookmark_star_btn"].classes(
+                                add="text-amber-500",
+                                remove="text-slate-400 hover:text-amber-500",
+                            )
+                            header_refs["bookmark_star_btn"].tooltip(
+                                "Bỏ yêu thích thẻ này"
+                            )
+                        else:
+                            header_refs["bookmark_star_btn"].props("icon=star_border")
+                            header_refs["bookmark_star_btn"].classes(
+                                add="text-slate-400 hover:text-amber-500",
+                                remove="text-amber-500",
+                            )
+                            header_refs["bookmark_star_btn"].tooltip(
+                                "Lưu thẻ vào mục yêu thích"
+                            )
+
                         with card_slot:
                             state["card_controller"] = render_flashcard(
                                 card_data=current_card_data,
@@ -297,11 +324,13 @@ async def render_study_page(deck_id: Optional[int] = None) -> None:
                         action_bar_ref["set_active"](False)
 
                         current_card = cards_pool[state["current_index"]]
-                        card_id = current_card.get("id", 1)
+                        card_id_val = current_card.get("id", 1)
 
                         asyncio.create_task(
                             api.submit_srs_review(
-                                session_id=session_id, card_id=card_id, rating=rating
+                                session_id=session_id,
+                                card_id=card_id_val,
+                                rating=rating,
                             )
                         )
 
@@ -337,5 +366,11 @@ async def render_study_page(deck_id: Optional[int] = None) -> None:
 
                     await update_current_card_ui()
 
-        # Tải dữ liệu ban đầu
+        try:
+            asyncio.get_running_loop()
+            if not ui.context.client.has_socket_connection:
+                await ui.context.client.connected()
+        except RuntimeError:
+            pass
+
         await load_study_data()

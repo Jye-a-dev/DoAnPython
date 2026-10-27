@@ -11,8 +11,10 @@ logger = logging.getLogger(__name__)
 def network_error_banner(
     on_retry: Optional[Callable[[], Any]] = None,
     message: str = "Không thể kết nối đến máy chủ Backend (Port 3000). Vui lòng kiểm tra lại tiến trình.",
-) -> ui.row:
+) -> Optional[ui.row]:
     """Banner thông báo lỗi kết nối Backend API kèm nút Thử lại không crash NiceGUI."""
+    if getattr(ui.context.client, "is_deleted", False):
+        return None
     with ui.row().classes(
         "w-full items-center justify-between bg-amber-50 border border-amber-200 text-amber-900 rounded-2xl p-4 shadow-sm transition-all duration-200 gap-4"
     ) as banner:

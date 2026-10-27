@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import inspect
 from typing import Any, Dict, List, Optional
 from nicegui import ui
 
@@ -13,7 +12,10 @@ from components import (
     render_footer,
     show_toast,
 )
+from components.generator_preview import render_generator_preview
+from components.home_hero import render_home_hero
 from services import api
+from services.auth_guard import get_current_user
 
 
 def _extract_cards_list(raw_response: Any) -> List[Dict[str, Any]]:
@@ -33,67 +35,13 @@ def render_home_page() -> None:
     with app_shell(
         active_tab="home", title="EduFlash AI - Studio Khởi Tạo Bài Học Thông Minh"
     ):
-        # -------------------------------------------------------------------
-        # 1. HERO SECTION
-        # -------------------------------------------------------------------
-        with ui.column().classes(
-            "w-full rounded-3xl py-12 md:py-16 px-6 md:px-12 "
-            "bg-gradient-to-b from-indigo-50/60 via-white to-slate-50 "
-            "border border-slate-200/80 shadow-sm items-center text-center gap-6 relative overflow-hidden"
-        ):
-            with ui.row().classes(
-                "items-center gap-2 px-4 py-1.5 rounded-full bg-white/90 border border-indigo-200/80 shadow-xs backdrop-blur-xs"
-            ):
-                ui.label(
-                    "✨ Trợ lý học tập thông minh tích hợp AI Offline & Thuật toán SM-2"
-                ).classes(f"text-xs md:text-sm font-bold text-{TOKENS['primary']}")
+        cur_user = get_current_user() or {}
+        active_user_id = int(cur_user.get("id") or cur_user.get("user_id") or 1)
 
-            ui.label("Tạo Flashcard Tự Động Từ Bài Giảng Chỉ Trong Vài Giây").classes(
-                "text-3xl md:text-5xl font-black text-slate-900 leading-tight max-w-4xl tracking-tight"
-            )
+        # 1. Hero Section Component
+        render_home_hero()
 
-            ui.label(
-                "Nạp trực tiếp giáo trình PDF hoặc file ghi âm bài giảng MP3 để AI phân tích trọng tâm, "
-                "sinh câu hỏi thông minh và tối ưu hóa chu kỳ ôn tập dài hạn."
-            ).classes(
-                "text-sm md:text-base text-slate-600 max-w-2xl font-normal leading-relaxed"
-            )
-
-            # Cụm nút CTA điều hướng mượt
-            with ui.row().classes("items-center justify-center gap-4 mt-2 flex-wrap"):
-                ui.button(
-                    "⚡ VÀO STUDIO TẠO THẺ",
-                    icon="bolt",
-                    on_click=lambda: ui.run_javascript(
-                        'document.getElementById("workspace-studio").scrollIntoView({behavior: "smooth"})'
-                    ),
-                ).classes(
-                    f"bg-{TOKENS['primary']} hover:bg-{TOKENS['primary_hover']} text-white font-bold px-6 py-3 rounded-2xl "
-                    "shadow-lg hover:shadow-indigo-500/25 transition duration-200 cursor-pointer"
-                )
-
-                ui.button(
-                    "ÔN TẬP SM-2",
-                    icon="school",
-                    on_click=lambda: ui.navigate.to("/study"),
-                ).props('text-color="black"').classes(
-                    "bg-white hover:bg-slate-100 !text-black text-black font-bold px-6 py-3 rounded-2xl "
-                    "border border-slate-200 shadow-sm transition duration-200 cursor-pointer"
-                )
-
-                ui.button(
-                    "THƯ VIỆN DECK",
-                    icon="folder_special",
-                    on_click=lambda: ui.navigate.to("/decks"),
-                ).props('text-color="black"').classes(
-                    "bg-white hover:bg-slate-100 !text-black text-black font-bold px-6 py-3 rounded-2xl "
-                    "border border-slate-200 shadow-sm transition duration-200 cursor-pointer"
-                )
-
-        # -------------------------------------------------------------------
-        # 2. WORKSPACE STUDIO SECTION (#workspace-studio)
-        # -------------------------------------------------------------------
-        # State lưu trữ danh sách tệp nhị phân trong RAM & thẻ AI sinh
+        # 2. Workspace Studio Section (#workspace-studio)
         uploaded_ram_files: List[Dict[str, Any]] = []
         generated_cards_state: List[Dict[str, Any]] = []
 
@@ -103,7 +51,6 @@ def render_home_page() -> None:
             with ui.card().classes(
                 "bg-white border border-slate-200 rounded-3xl shadow-xl p-6 md:p-8 max-w-4xl mx-auto w-full gap-6"
             ):
-                # Header Studio
                 with ui.row().classes(
                     "items-center justify-between w-full pb-4 border-b border-slate-100"
                 ):
@@ -124,11 +71,9 @@ def render_home_page() -> None:
                         f"text-xs font-semibold px-3 py-1 rounded-full bg-{TOKENS['bg_subtle']} text-{TOKENS['text_secondary']} border border-{TOKENS['border']}"
                     )
 
-                # Container nhập liệu
                 input_section_container = ui.column().classes("w-full gap-5")
 
                 with input_section_container:
-                    # Tabs chuyển đổi giữa Textarea và Dropzone
                     with ui.tabs().classes(
                         f"w-full border-b border-{TOKENS['border']} text-{TOKENS['text_secondary']}"
                     ) as input_tabs:
@@ -144,7 +89,6 @@ def render_home_page() -> None:
                     with ui.tab_panels(input_tabs, value=tab_text).classes(
                         "w-full bg-transparent p-0 mt-1"
                     ):
-                        # Tab 1: Nhập văn bản nhanh
                         with ui.tab_panel(tab_text).classes("p-0"):
                             ui.label("Nội dung bài giảng / tóm tắt lý thuyết:").classes(
                                 f"text-xs font-bold text-{TOKENS['text_secondary']} uppercase tracking-wider mb-2"
@@ -159,7 +103,6 @@ def render_home_page() -> None:
                                 )
                             )
 
-                        # Tab 2: Nạp tài liệu & âm thanh vào RAM
                         with ui.tab_panel(tab_files).classes("p-0"):
 
                             def handle_dropzone_upload(
@@ -192,7 +135,6 @@ def render_home_page() -> None:
                                 on_upload_callback=handle_dropzone_upload
                             )
 
-                # Loading Skeleton & Progress Bar
                 loading_container = ui.column().classes(
                     "w-full items-center justify-center py-8 gap-4 border border-dashed border-indigo-200 rounded-2xl bg-indigo-50/30"
                 )
@@ -209,7 +151,6 @@ def render_home_page() -> None:
                         "Mô hình đang phân tích ngữ nghĩa và trích xuất flashcard..."
                     ).classes("text-xs text-slate-500 font-medium")
 
-                # Nút kích hoạt AI Sinh Flashcard
                 generate_btn = ui.button(
                     "⚡ Sinh Flashcard Tự Động",
                 ).classes(
@@ -218,268 +159,20 @@ def render_home_page() -> None:
                     "transition duration-200 cursor-pointer"
                 )
 
-                # -----------------------------------------------------------
-                # 3. RESULT PREVIEW SECTION (Duyệt & chỉnh sửa trước khi lưu)
-                # -----------------------------------------------------------
                 preview_container = ui.column().classes(
                     "w-full gap-6 mt-6 pt-6 border-t border-slate-100"
                 )
                 preview_container.set_visibility(False)
 
                 async def render_preview_cards() -> None:
-                    """Hiển thị danh sách thẻ xem trước và bộ công cụ lưu vào Deck."""
-                    preview_container.clear()
-                    if not generated_cards_state:
-                        preview_container.set_visibility(False)
-                        return
-
-                    preview_container.set_visibility(True)
-
-                    with preview_container:
-                        # Thanh Header Preview & Lưu vào Deck
-                        with ui.row().classes(
-                            "w-full items-center justify-between pb-3 border-b border-slate-100 flex-wrap gap-4"
-                        ):
-                            with ui.row().classes("items-center gap-2"):
-                                ui.icon("check_circle", size="24px").classes(
-                                    "text-emerald-600"
-                                )
-                                ui.label(
-                                    f"Xem trước {len(generated_cards_state)} Flashcards sinh từ AI"
-                                ).classes("text-lg font-bold text-slate-900")
-
-                            with ui.row().classes("items-center gap-2"):
-                                ui.button(
-                                    "+ Thêm thẻ thủ công",
-                                    icon="add",
-                                    on_click=add_empty_preview_card,
-                                ).props("flat dense").classes(
-                                    f"text-xs font-bold text-{TOKENS['primary']} hover:underline"
-                                )
-                                ui.button(
-                                    "Làm mới / Hủy",
-                                    icon="refresh",
-                                    on_click=reset_to_input_state,
-                                ).props("flat dense").classes(
-                                    "text-xs font-semibold text-rose-500 hover:underline"
-                                )
-
-                        # Cụm Lưu vào Deck chính: Dropdown chọn Deck hoặc tạo mới
-                        decks_resp = await api.get_decks()
-                        existing_decks: List[Dict[str, Any]] = (
-                            decks_resp if isinstance(decks_resp, list) else []
-                        )
-                        deck_options = {
-                            d["id"]: d.get("title", f"Deck #{d['id']}")
-                            for d in existing_decks
-                            if isinstance(d, dict) and "id" in d
-                        }
-                        default_deck_id = (
-                            list(deck_options.keys())[0] if deck_options else None
-                        )
-
-                        with ui.card().classes(
-                            "w-full bg-slate-50 border border-slate-200/80 rounded-2xl p-4 gap-3"
-                        ):
-                            with ui.row().classes(
-                                "items-center justify-between w-full flex-wrap gap-3"
-                            ):
-                                with ui.row().classes(
-                                    "items-center gap-3 flex-1 min-w-[280px]"
-                                ):
-                                    ui.icon("folder", size="20px").classes(
-                                        f"text-{TOKENS['primary']}"
-                                    )
-                                    deck_select = (
-                                        ui.select(
-                                            options=deck_options,
-                                            value=default_deck_id,
-                                            label="Chọn Deck chính",
-                                        )
-                                        .props("outlined dense")
-                                        .classes("w-64 bg-white rounded-lg")
-                                    )
-
-                                    new_deck_input = (
-                                        ui.input(placeholder="Hoặc gõ tên Deck mới...")
-                                        .props("outlined dense")
-                                        .classes("w-64 bg-white rounded-lg")
-                                    )
-
-                                save_all_btn = ui.button(
-                                    "Lưu vào Deck chính",
-                                    icon="save",
-                                ).classes(
-                                    "bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-6 py-2.5 rounded-xl shadow-md transition duration-200 cursor-pointer"
-                                )
-
-                                async def save_to_deck() -> None:
-                                    save_all_btn.props("loading disable")
-                                    try:
-                                        target_deck_id = deck_select.value
-                                        new_name = (
-                                            new_deck_input.value.strip()
-                                            if new_deck_input.value
-                                            else ""
-                                        )
-
-                                        # Tạo Deck mới nếu người dùng nhập tên
-                                        if new_name:
-                                            created_deck = await api.create_deck(
-                                                title=new_name
-                                            )
-                                            if (
-                                                isinstance(created_deck, dict)
-                                                and "id" in created_deck
-                                            ):
-                                                target_deck_id = created_deck["id"]
-                                                show_toast(
-                                                    f"Đã tạo Deck mới: {new_name}",
-                                                    "positive",
-                                                )
-                                            elif isinstance(
-                                                created_deck, dict
-                                            ) and created_deck.get("error"):
-                                                show_toast(
-                                                    created_deck.get(
-                                                        "message", "Lỗi tạo Deck"
-                                                    ),
-                                                    "negative",
-                                                )
-                                                return
-
-                                        if not target_deck_id:
-                                            # Tự động tạo 1 Deck mặc định nếu chưa có
-                                            fallback_deck = await api.create_deck(
-                                                title="Bài học mới"
-                                            )
-                                            target_deck_id = fallback_deck.get("id", 1)
-
-                                        # Lưu hoặc cập nhật toàn bộ thẻ vào deck
-                                        saved_count = 0
-                                        for c in generated_cards_state:
-                                            q = c.get("question", "").strip()
-                                            a = c.get("answer", "").strip()
-                                            exp = c.get("explanation", "").strip()
-                                            diff = c.get("difficulty", "Trung bình")
-                                            if not q or not a:
-                                                continue
-
-                                            if c.get("id"):
-                                                await api.update_card(
-                                                    c["id"],
-                                                    question=q,
-                                                    answer=a,
-                                                    explanation=exp,
-                                                    difficulty=diff,
-                                                    deck_id=target_deck_id,
-                                                )
-                                            else:
-                                                await api.create_card(
-                                                    question=q,
-                                                    answer=a,
-                                                    explanation=exp,
-                                                    difficulty=diff,
-                                                    deck_id=target_deck_id,
-                                                )
-                                            saved_count += 1
-
-                                        show_toast(
-                                            f"Đã lưu thành công {saved_count} thẻ vào Deck #{target_deck_id}!",
-                                            "positive",
-                                        )
-                                        # Điều hướng sang trang ôn tập
-                                        ui.navigate.to(
-                                            f"/study?deck_id={target_deck_id}"
-                                        )
-                                    except Exception as exc:
-                                        show_toast(
-                                            f"Lỗi khi lưu thẻ vào Deck: {exc}",
-                                            "negative",
-                                        )
-                                    finally:
-                                        save_all_btn.props(remove="loading disable")
-
-                                save_all_btn.on_click(save_to_deck)
-
-                        # Danh sách lưới xem trước các thẻ (Grid Preview)
-                        with ui.element("div").classes(
-                            "grid grid-cols-1 md:grid-cols-2 gap-4 w-full"
-                        ):
-                            for idx, card in enumerate(generated_cards_state):
-                                with ui.card().classes(
-                                    "w-full bg-white border border-slate-200 rounded-2xl p-5 shadow-xs gap-3 hover:shadow-md transition-shadow relative"
-                                ):
-                                    with ui.row().classes(
-                                        "items-center justify-between w-full"
-                                    ):
-                                        ui.label(f"Thẻ #{idx + 1}").classes(
-                                            f"text-xs font-extrabold px-2.5 py-1 rounded-md bg-{TOKENS['primary_light']} text-{TOKENS['primary']}"
-                                        )
-
-                                        def make_delete_cb(
-                                            target_idx: int, card_id: Optional[int]
-                                        ):
-                                            async def remove_card():
-                                                if card_id:
-                                                    await api.delete_card(card_id)
-                                                generated_cards_state.pop(target_idx)
-                                                show_toast(
-                                                    "Đã loại bỏ thẻ khỏi danh sách",
-                                                    "info",
-                                                )
-                                                await render_preview_cards()
-
-                                            return remove_card
-
-                                        ui.button(
-                                            icon="delete_outline",
-                                            on_click=make_delete_cb(
-                                                idx, card.get("id")
-                                            ),
-                                        ).props("flat dense round").classes(
-                                            "text-slate-400 hover:text-rose-600"
-                                        )
-
-                                    # Trường chỉnh sửa trực tiếp câu hỏi & đáp án
-                                    q_input = (
-                                        ui.textarea(
-                                            label="Câu hỏi",
-                                            value=card.get("question", ""),
-                                        )
-                                        .props("rows=2 outlined dense")
-                                        .classes("w-full bg-slate-50/50 text-sm")
-                                    )
-                                    a_input = (
-                                        ui.textarea(
-                                            label="Đáp án", value=card.get("answer", "")
-                                        )
-                                        .props("rows=2 outlined dense")
-                                        .classes("w-full bg-slate-50/50 text-sm")
-                                    )
-                                    exp_input = (
-                                        ui.input(
-                                            label="Giải thích chi tiết",
-                                            value=card.get("explanation", ""),
-                                        )
-                                        .props("outlined dense")
-                                        .classes("w-full bg-slate-50/50 text-xs")
-                                    )
-
-                                    # Đồng bộ state khi người dùng nhập chỉnh sửa
-                                    def bind_card_fields(
-                                        target_c=card,
-                                        qi=q_input,
-                                        ai=a_input,
-                                        ei=exp_input,
-                                    ):
-                                        target_c["question"] = qi.value
-                                        target_c["answer"] = ai.value
-                                        target_c["explanation"] = ei.value
-
-                                    q_input.on("blur", lambda: bind_card_fields())
-                                    a_input.on("blur", lambda: bind_card_fields())
-                                    exp_input.on("blur", lambda: bind_card_fields())
+                    await render_generator_preview(
+                        preview_container=preview_container,
+                        generated_cards_state=generated_cards_state,
+                        active_user_id=active_user_id,
+                        on_add_card=add_empty_preview_card,
+                        on_reset=reset_to_input_state,
+                        on_rerender=render_preview_cards,
+                    )
 
                 def add_empty_preview_card():
                     generated_cards_state.append(
@@ -488,6 +181,7 @@ def render_home_page() -> None:
                             "answer": "Đáp án...",
                             "explanation": "",
                             "difficulty": "Trung bình",
+                            "tags": [],
                         }
                     )
                     asyncio.ensure_future(render_preview_cards())
@@ -503,9 +197,7 @@ def render_home_page() -> None:
                         remove="bg-emerald-50 text-emerald-700 border-emerald-200 font-bold",
                     )
 
-                # Xử lý sự kiện nhấn nút "⚡ Sinh Flashcard"
                 async def execute_generate_workflow() -> None:
-                    # Lấy file nhị phân trong RAM hoặc văn bản textarea
                     current_files = (
                         dropzone_ref["get_files"]()
                         if "dropzone_ref" in locals() and dropzone_ref
@@ -520,7 +212,6 @@ def render_home_page() -> None:
                         )
                         return
 
-                    # Micro-interaction: disable nút, ẩn nội dung nhập, hiển thị loading state
                     generate_btn.props("loading disable")
                     generate_btn.set_visibility(False)
                     input_section_container.set_visibility(False)
@@ -530,7 +221,6 @@ def render_home_page() -> None:
                     try:
                         cards_fetched: List[Dict[str, Any]] = []
 
-                        # Trường hợp 1: Có tệp tải lên trong RAM
                         if current_files:
                             target_file = current_files[0]
                             file_bytes = target_file.get("bytes", b"")
@@ -570,7 +260,9 @@ def render_home_page() -> None:
                                     "Đang xử lý tài liệu PDF/Text qua Backend..."
                                 )
                                 doc_resp = await api.upload_doc(
-                                    file_bytes=file_bytes, filename=filename
+                                    file_bytes=file_bytes,
+                                    filename=filename,
+                                    user_id=active_user_id,
                                 )
                                 doc_id = None
                                 if isinstance(doc_resp, dict):
@@ -582,11 +274,12 @@ def render_home_page() -> None:
                                     ai_badge.text = "[AI Processing: Flan-T5 inference flashcards...]"
                                     loading_detail.text = "Mô hình đang tổng hợp câu hỏi trắc nghiệm và câu trả lời..."
                                     gen_resp = await api.generate_cards(
-                                        doc_id=doc_id, deck_id=None
+                                        doc_id=doc_id,
+                                        deck_id=None,
+                                        user_id=active_user_id,
                                     )
                                     cards_fetched = _extract_cards_list(gen_resp)
                                 else:
-                                    # Fallback văn bản nếu là text thuần
                                     if filename.lower().endswith((".txt", ".md")):
                                         text_str = file_bytes.decode(
                                             "utf-8", errors="ignore"
@@ -596,7 +289,6 @@ def render_home_page() -> None:
                                         )
                                         cards_fetched = _extract_cards_list(gen_resp)
 
-                        # Trường hợp 2: Nhập văn bản trực tiếp qua textarea
                         elif raw_text:
                             ai_badge.text = (
                                 "[AI Processing: Flan-T5 inference flashcards...]"
@@ -607,7 +299,6 @@ def render_home_page() -> None:
                             gen_resp = await api.generate_flashcards(text=raw_text)
                             cards_fetched = _extract_cards_list(gen_resp)
 
-                        # Xử lý kết quả
                         if cards_fetched:
                             generated_cards_state.clear()
                             generated_cards_state.extend(cards_fetched)
@@ -635,7 +326,5 @@ def render_home_page() -> None:
 
                 generate_btn.on_click(execute_generate_workflow)
 
-        # -------------------------------------------------------------------
-        # 4. FOOTER
-        # -------------------------------------------------------------------
+        # 3. Footer Component
         render_footer()

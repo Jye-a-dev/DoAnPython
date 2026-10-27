@@ -82,6 +82,12 @@ def render_navbar(
                     "icon": "style",
                 },
                 {
+                    "id": "cards",
+                    "label": "Kho thẻ",
+                    "path": "/cards",
+                    "icon": "layers",
+                },
+                {
                     "id": "study",
                     "label": "Ôn tập SM-2",
                     "path": "/study",

@@ -97,10 +97,17 @@ def render_flashcard(
     explanation_text = card_data.get("explanation", "")
     difficulty_meta = _get_difficulty_badge(card_data.get("difficulty", "Trung bình"))
 
-    # Xử lý danh sách tags hoặc tag đơn
+    # Xử lý danh sách tags hoặc tag đơn từ card_data
     raw_tags = card_data.get("tags")
+    tag_list = []
     if isinstance(raw_tags, list):
-        tag_list = raw_tags
+        for t in raw_tags:
+            if isinstance(t, dict):
+                name = t.get("name", "")
+                if name:
+                    tag_list.append(name)
+            elif isinstance(t, str) and t.strip():
+                tag_list.append(t.strip())
     elif isinstance(raw_tags, str) and raw_tags.strip():
         tag_list = [raw_tags.strip()]
     elif card_data.get("tag"):
@@ -135,7 +142,7 @@ def render_flashcard(
                     with ui.row().classes("items-center gap-1.5 flex-wrap"):
                         for tag in tag_list:
                             with ui.row().classes(
-                                "items-center gap-1 px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-600 border border-slate-200/80 text-xs font-medium"
+                                "items-center gap-1 px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 border border-slate-200/80 text-xs font-medium"
                             ):
                                 ui.icon("label", size="12px").classes("text-slate-400")
                                 ui.label(tag)

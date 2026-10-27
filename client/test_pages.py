@@ -26,6 +26,7 @@ from services import api, auth_guard
 from pages.home import render_home_page
 from pages.study import render_study_page
 from pages.decks import render_decks_page
+from pages.cards import render_cards_page
 from pages.login import render_login_page
 from pages.register import render_register_page
 from pages.profile import render_profile_page
@@ -191,15 +192,34 @@ def test_profile_page():
     print("  -> [PASS] render_profile_page compiled successfully.")
 
 
+def test_cards_page():
+    print("[TEST 3.5/8] Testing render_cards_page()...")
+    mock_cards = [
+        {"id": 1, "question": "Q1", "answer": "A1", "deck_id": None},
+        {"id": 2, "question": "Q2", "answer": "A2", "deck_id": 1},
+    ]
+    orig_cards = api.get_cards
+    orig_decks = api.get_decks
+    try:
+        api.get_cards = AsyncMock(return_value=mock_cards)
+        api.get_decks = AsyncMock(return_value=[{"id": 1, "title": "Deck Demo"}])
+        _run_coroutine(render_cards_page())
+    finally:
+        api.get_cards = orig_cards
+        api.get_decks = orig_decks
+    print("  -> [PASS] render_cards_page compiled and mounted successfully.")
+
+
 def test_main_routes():
     print("[TEST 7/7] Testing main.py SPA routes...")
     assert hasattr(main, "home_route"), "main must have home_route"
     assert hasattr(main, "login_route"), "main must have login_route"
     assert hasattr(main, "register_route"), "main must have register_route"
     assert hasattr(main, "decks_route"), "main must have decks_route"
+    assert hasattr(main, "cards_route"), "main must have cards_route"
     assert hasattr(main, "study_route"), "main must have study_route"
     assert hasattr(main, "profile_route"), "main must have profile_route"
-    print("  -> [PASS] All 6 SPA routes registered correctly.")
+    print("  -> [PASS] All 7 SPA routes registered correctly.")
 
 
 if __name__ == "__main__":
@@ -209,6 +229,7 @@ if __name__ == "__main__":
     test_home_page()
     test_study_page()
     test_decks_page()
+    test_cards_page()
     test_login_page()
     test_register_page()
     test_profile_page()
