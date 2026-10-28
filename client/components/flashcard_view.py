@@ -1,3 +1,4 @@
+import json
 from typing import Any, Callable, Dict, List, Optional
 from nicegui import ui
 from components.layout import TOKENS
@@ -63,6 +64,8 @@ def render_flashcard(
 
     - Khung kích thước cố định responsive: w-full max-w-xl h-80 cursor-pointer select-none.
     - Cơ chế Flip 3D (CSS perspective: 1000px & transform-style: preserve-3d, transition-transform duration-500).
+    - Nút TTS loa volume_up chỉ hiển thị khi card_data["tts_text"] có giá trị.
+    - Sự kiện click.stop trên nút TTS ngăn triệt để sự kiện nổi bọt lên flip container.
     - Mặt trước (Front / Question):
         * Cụm Badge trên cùng: Độ khó (TOKENS), Tag chủ đề (bg-slate-100 text-slate-600).
         * Câu hỏi căn giữa font lớn (text-xl font-bold text-slate-800 text-center).
@@ -96,6 +99,11 @@ def render_flashcard(
     answer_text = card_data.get("answer", "Nội dung đáp án")
     explanation_text = card_data.get("explanation", "")
     difficulty_meta = _get_difficulty_badge(card_data.get("difficulty", "Trung bình"))
+
+    # Trích xuất thông tin TTS
+    tts_text = card_data.get("tts_text")
+    tts_lang = card_data.get("tts_lang") or "en-US"
+    has_tts = bool(tts_text and str(tts_text).strip())
 
     # Xử lý danh sách tags hoặc tag đơn từ card_data
     raw_tags = card_data.get("tags")
@@ -137,7 +145,7 @@ def render_flashcard(
                 "absolute inset-0 w-full h-full backface-hidden bg-white border border-slate-200/90 "
                 "rounded-2xl p-6 shadow-sm hover:shadow-md transition-shadow duration-200 flex flex-col justify-between"
             ):
-                # Cụm Badge trên cùng: Độ khó (TOKENS) + Tag chủ đề (bg-slate-100 text-slate-600)
+                # Cụm Badge trên cùng: Độ khó (TOKENS) + Tag chủ đề + Nút TTS
                 with ui.row().classes("w-full items-center justify-between"):
                     with ui.row().classes("items-center gap-1.5 flex-wrap"):
                         for tag in tag_list:
@@ -147,11 +155,19 @@ def render_flashcard(
                                 ui.icon("label", size="12px").classes("text-slate-400")
                                 ui.label(tag)
 
-                    with ui.row().classes(
-                        f"items-center gap-1 px-2.5 py-0.5 rounded-full border text-xs font-bold {difficulty_meta['classes']}"
-                    ):
-                        ui.icon(difficulty_meta["icon"], size="14px")
-                        ui.label(difficulty_meta["text"])
+                    with ui.row().classes("items-center gap-2"):
+                        # Nút TTS — chỉ hiển thị khi có tts_text
+                        tts_btn_front = ui.button(icon="volume_up").props(
+                            "flat round dense size=sm color=indigo-6"
+                        )
+                        if not has_tts:
+                            tts_btn_front.set_visibility(False)
+
+                        with ui.row().classes(
+                            f"items-center gap-1 px-2.5 py-0.5 rounded-full border text-xs font-bold {difficulty_meta['classes']}"
+                        ):
+                            ui.icon(difficulty_meta["icon"], size="14px")
+                            ui.label(difficulty_meta["text"])
 
                 # Nội dung câu hỏi căn giữa với font chữ lớn
                 with ui.column().classes(
@@ -179,18 +195,26 @@ def render_flashcard(
                 "absolute inset-0 w-full h-full backface-hidden rotate-y-180 bg-white border border-indigo-200 "
                 "rounded-2xl p-6 shadow-sm hover:shadow-md transition-shadow duration-200 flex flex-col justify-between"
             ):
-                # Header Mặt sau
+                # Header Mặt sau + Nút TTS phía sau
                 with ui.row().classes(
                     "w-full items-center justify-between pb-2 border-b border-slate-100"
                 ):
                     ui.label("ĐÁP ÁN").classes(
                         "text-xs font-bold text-indigo-600 tracking-wider uppercase"
                     )
-                    with ui.row().classes(
-                        f"items-center gap-1 px-2 py-0.5 rounded-full border text-xs font-bold {difficulty_meta['classes']}"
-                    ):
-                        ui.icon(difficulty_meta["icon"], size="12px")
-                        ui.label(difficulty_meta["text"])
+                    with ui.row().classes("items-center gap-2"):
+                        # Nút TTS trên mặt sau — chỉ hiển thị khi có tts_text
+                        tts_btn_back = ui.button(icon="volume_up").props(
+                            "flat round dense size=sm color=indigo-6"
+                        )
+                        if not has_tts:
+                            tts_btn_back.set_visibility(False)
+
+                        with ui.row().classes(
+                            f"items-center gap-1 px-2 py-0.5 rounded-full border text-xs font-bold {difficulty_meta['classes']}"
+                        ):
+                            ui.icon(difficulty_meta["icon"], size="12px")
+                            ui.label(difficulty_meta["text"])
 
                 # Thân Mặt sau: Nội dung đáp án rõ ràng + Khung giải thích chi tiết
                 with ui.column().classes("w-full my-auto gap-2 overflow-y-auto pr-1"):
@@ -220,6 +244,9 @@ def render_flashcard(
                     ui.icon("school", size="14px").classes("text-indigo-600")
                     ui.label("Đánh giá độ nhớ bằng các nút [1, 2, 3, 4] bên dưới")
 
+    # -------------------------------------------------------------------
+    # Flip logic
+    # -------------------------------------------------------------------
     def apply_flip(target_state: bool) -> None:
         """Thực thi lật thẻ và thông báo callback."""
         is_flipped_state["value"] = target_state
@@ -235,6 +262,28 @@ def render_flashcard(
         apply_flip(not is_flipped_state["value"])
 
     card_outer.on("click", toggle)
+
+    # -------------------------------------------------------------------
+    # TTS: Web Speech API — click.stop ngăn event nổi bọt lên flip container
+    # -------------------------------------------------------------------
+    if has_tts:
+        tts_text_safe = str(tts_text).strip()
+        tts_lang_safe = str(tts_lang).strip() if tts_lang else "en-US"
+
+        def handle_tts(e):  # noqa: ARG001
+            js = f"""
+            (function() {{
+                window.speechSynthesis.cancel();
+                var u = new SpeechSynthesisUtterance({json.dumps(tts_text_safe)});
+                u.lang = {json.dumps(tts_lang_safe)};
+                window.speechSynthesis.speak(u);
+            }})();
+            """
+            ui.run_javascript(js)
+
+        # click.stop ngăn event nổi bọt — không kích hoạt flip 3D
+        tts_btn_front.on("click.stop", handle_tts)
+        tts_btn_back.on("click.stop", handle_tts)
 
     return FlashcardController(
         toggle_func=toggle,

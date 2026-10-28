@@ -1,3 +1,8 @@
+"""
+study.py — Spaced Repetition (SM-2) Focus Mode Page.
+Orchestrator for modular components in pages.study_components.
+"""
+
 from __future__ import annotations
 
 import asyncio
@@ -8,12 +13,16 @@ from components import (
     app_shell,
     empty_deck_state,
     network_error_banner,
-    render_flashcard,
-    render_srs_action_bar,
     show_toast,
 )
-from components.study_congrats import render_study_congrats
-from components.study_header import render_study_header
+from pages.study_components.category_modal import (
+    _CATEGORY_COLOR_MAP,
+    _CATEGORY_ICON_MAP,
+    _category_icon,
+    _run_random_two_level_selection,
+    _show_category_selection_modal,
+)
+from pages.study_components.study_session_view import render_study_session_view
 from services import api
 from services.auth_guard import get_current_user
 
@@ -21,7 +30,10 @@ from services.auth_guard import get_current_user
 async def render_study_page(
     deck_id: Optional[int] = None, tag: Optional[str] = None
 ) -> None:
-    """Trang Ôn tập Lặp lại Ngắt quãng (SM-2) chế độ Focus Mode tối giản tích hợp Favorites & Lọc Tag."""
+    """Trang Ôn tập Lặp lại Ngắt quãng (SM-2) chế độ Focus Mode tối giản tích hợp Favorites & Lọc Tag.
+
+    Khi deck_id is None: hiển thị modal Chọn Môn Học và thực thi thuật toán Random 2 Cấp.
+    """
     with app_shell(
         active_tab="study", title="EduFlash AI - Chế Độ Ôn Tập Lặp Lại Ngắt Quãng SM-2"
     ):
@@ -44,6 +56,7 @@ async def render_study_page(
         """)
 
         selected_tag_state = {"value": tag}
+        resolved_deck_id: Dict[str, Optional[int]] = {"value": deck_id}
         study_container = ui.column().classes("w-full")
 
         async def load_study_data() -> None:
@@ -54,13 +67,15 @@ async def render_study_page(
             with study_container:
                 active_deck: Optional[Dict[str, Any]] = None
                 deck_resp: Any = None
-                if deck_id is not None:
-                    deck_resp = await api.get_deck_by_id(deck_id)
+                current_deck_id = resolved_deck_id["value"]
+
+                if current_deck_id is not None:
+                    deck_resp = await api.get_deck_by_id(current_deck_id)
                     if isinstance(deck_resp, dict) and "id" in deck_resp:
                         active_deck = deck_resp
 
                 cards_resp = await api.get_cards(
-                    deck_id=deck_id, user_id=active_user_id
+                    deck_id=current_deck_id, user_id=active_user_id
                 )
                 favorites_resp = await api.get_favorites(user_id=active_user_id)
 
@@ -68,7 +83,7 @@ async def render_study_page(
                     return
 
                 if api.is_connection_error(cards_resp) or (
-                    deck_id is not None and api.is_connection_error(deck_resp)
+                    current_deck_id is not None and api.is_connection_error(deck_resp)
                 ):
                     network_error_banner(
                         on_retry=load_study_data,
@@ -152,219 +167,28 @@ async def render_study_page(
                     return
 
                 session_id: int = 1
-                target_deck_id = deck_id or cards_pool[0].get("deck_id", 1)
+                target_deck_id = current_deck_id or cards_pool[0].get("deck_id", 1)
                 sess_resp = await api.create_study_session(
                     deck_id=target_deck_id, user_id=active_user_id
                 )
                 if isinstance(sess_resp, dict):
                     session_id = sess_resp.get("session_id") or sess_resp.get("id", 1)
 
-                total_cards = len(cards_pool)
-                state = {
-                    "current_index": 0,
-                    "reviewed_count": 0,
-                    "card_controller": None,
-                    "is_animating": False,
-                }
+                async def handle_tag_filter_change(selected_val: str) -> None:
+                    selected_tag_state["value"] = selected_val
+                    await load_study_data()
 
-                with ui.column().classes(
-                    "study-focus-container w-full max-w-2xl mx-auto gap-5"
-                ):
-                    deck_title = (
-                        active_deck.get("title")
-                        if active_deck
-                        else f"Phiên Ôn Tập ({total_cards} thẻ)"
-                    )
-
-                    async def handle_toggle_card_favorite() -> None:
-                        if state["current_index"] >= total_cards:
-                            return
-                        curr_card = cards_pool[state["current_index"]]
-                        cid = curr_card.get("id")
-                        if not cid:
-                            return
-
-                        if cid in card_fav_map:
-                            fid = card_fav_map[cid]
-                            res = await api.delete_favorite(fid)
-                            if isinstance(res, dict) and res.get("error"):
-                                show_toast(
-                                    res.get("message", "Lỗi hủy yêu thích"), "negative"
-                                )
-                            else:
-                                card_fav_map.pop(cid, None)
-                                header_refs["bookmark_star_btn"].props(
-                                    "icon=star_border"
-                                )
-                                header_refs["bookmark_star_btn"].classes(
-                                    add="text-slate-400 hover:text-amber-500",
-                                    remove="text-amber-500",
-                                )
-                                header_refs["bookmark_star_btn"].tooltip(
-                                    "Thêm vào yêu thích"
-                                )
-                                show_toast("Đã bỏ thẻ khỏi danh sách yêu thích", "info")
-                        else:
-                            res = await api.add_favorite(
-                                user_id=active_user_id, card_id=cid
-                            )
-                            if isinstance(res, dict) and res.get("error"):
-                                show_toast(
-                                    res.get("message", "Lỗi thêm yêu thích"), "negative"
-                                )
-                            else:
-                                new_fid = (
-                                    res.get("id", 1) if isinstance(res, dict) else 1
-                                )
-                                card_fav_map[cid] = new_fid
-                                header_refs["bookmark_star_btn"].props("icon=star")
-                                header_refs["bookmark_star_btn"].classes(
-                                    add="text-amber-500",
-                                    remove="text-slate-400 hover:text-amber-500",
-                                )
-                                header_refs["bookmark_star_btn"].tooltip(
-                                    "Bỏ yêu thích thẻ này"
-                                )
-                                show_toast(
-                                    "Đã lưu thẻ vào mục yêu thích! ⭐", "positive"
-                                )
-
-                    async def handle_tag_filter_change(selected_val: str) -> None:
-                        selected_tag_state["value"] = selected_val
-                        await load_study_data()
-
-                    header_refs = render_study_header(
-                        deck_title=deck_title or "",
-                        total_cards=total_cards,
-                        available_tags=available_tags,
-                        selected_tag=selected_tag_state["value"],
-                        on_tag_change=handle_tag_filter_change,
-                        on_toggle_favorite=handle_toggle_card_favorite,
-                    )
-
-                    card_slot = ui.column().classes(
-                        "card-transition-wrapper w-full items-center justify-center min-h-[340px] opacity-100 translate-x-0"
-                    )
-
-                    async def restart_session():
-                        state["current_index"] = 0
-                        state["reviewed_count"] = 0
-                        congrats_container.set_visibility(False)
-                        action_bar_ref["set_active"](True)
-                        action_bar_ref["container"].set_visibility(True)
-                        card_slot.set_visibility(True)
-                        await update_current_card_ui()
-
-                    congrats_container = render_study_congrats(
-                        total_cards=total_cards,
-                        on_restart=restart_session,
-                    )
-                    congrats_container.set_visibility(False)
-
-                    async def update_current_card_ui() -> None:
-                        card_slot.clear()
-                        idx = state["current_index"]
-                        if idx >= total_cards:
-                            await api.end_study_session(
-                                session_id=session_id, total_reviewed=total_cards
-                            )
-                            card_slot.set_visibility(False)
-                            action_bar_ref["set_active"](False)
-                            action_bar_ref["container"].set_visibility(False)
-                            congrats_container.set_visibility(True)
-                            show_toast(
-                                "Chúc mừng! Đã hoàn thành phiên ôn tập!", "positive"
-                            )
-                            return
-
-                        header_refs["counter_label"].text = (
-                            f"Thẻ {idx + 1} / {total_cards}"
-                        )
-                        header_refs["remaining_label"].text = (
-                            f"Còn lại: {total_cards - idx - 1} thẻ"
-                        )
-                        header_refs["progress_bar"].set_value((idx + 1) / total_cards)
-
-                        current_card_data = cards_pool[idx]
-                        curr_cid = current_card_data.get("id")
-
-                        if curr_cid and curr_cid in card_fav_map:
-                            header_refs["bookmark_star_btn"].props("icon=star")
-                            header_refs["bookmark_star_btn"].classes(
-                                add="text-amber-500",
-                                remove="text-slate-400 hover:text-amber-500",
-                            )
-                            header_refs["bookmark_star_btn"].tooltip(
-                                "Bỏ yêu thích thẻ này"
-                            )
-                        else:
-                            header_refs["bookmark_star_btn"].props("icon=star_border")
-                            header_refs["bookmark_star_btn"].classes(
-                                add="text-slate-400 hover:text-amber-500",
-                                remove="text-amber-500",
-                            )
-                            header_refs["bookmark_star_btn"].tooltip(
-                                "Lưu thẻ vào mục yêu thích"
-                            )
-
-                        with card_slot:
-                            state["card_controller"] = render_flashcard(
-                                card_data=current_card_data,
-                                is_flipped_default=False,
-                            )
-
-                    async def handle_rating_submission(rating: int) -> None:
-                        if (
-                            state["is_animating"]
-                            or state["current_index"] >= total_cards
-                        ):
-                            return
-
-                        state["is_animating"] = True
-                        action_bar_ref["set_active"](False)
-
-                        current_card = cards_pool[state["current_index"]]
-                        card_id_val = current_card.get("id", 1)
-
-                        asyncio.create_task(
-                            api.submit_srs_review(
-                                session_id=session_id,
-                                card_id=card_id_val,
-                                rating=rating,
-                            )
-                        )
-
-                        card_slot.classes(
-                            add="opacity-0 -translate-x-8",
-                            remove="opacity-100 translate-x-0",
-                        )
-                        await asyncio.sleep(0.18)
-
-                        state["current_index"] += 1
-                        state["reviewed_count"] += 1
-                        await update_current_card_ui()
-
-                        card_slot.classes(
-                            add="opacity-100 translate-x-0",
-                            remove="opacity-0 -translate-x-8",
-                        )
-                        await asyncio.sleep(0.1)
-
-                        state["is_animating"] = False
-                        if state["current_index"] < total_cards:
-                            action_bar_ref["set_active"](True)
-
-                    def handle_space_flip():
-                        if state["card_controller"]:
-                            state["card_controller"].toggle_flip()
-
-                    action_bar_ref = render_srs_action_bar(
-                        on_rating_callback=handle_rating_submission,
-                        is_active=True,
-                        on_space_pressed=handle_space_flip,
-                    )
-
-                    await update_current_card_ui()
+                render_study_session_view(
+                    study_container=study_container,
+                    cards_pool=cards_pool,
+                    active_deck=active_deck,
+                    available_tags=available_tags,
+                    selected_tag=selected_tag_state["value"],
+                    card_fav_map=card_fav_map,
+                    session_id=session_id,
+                    active_user_id=active_user_id,
+                    on_tag_change=handle_tag_filter_change,
+                )
 
         try:
             asyncio.get_running_loop()
@@ -374,3 +198,54 @@ async def render_study_page(
             pass
 
         await load_study_data()
+
+    # Nếu không có deck_id: hiển thị modal chọn môn học trước
+    async def _boot_study_flow() -> None:
+        if deck_id is not None:
+            return
+
+        async def on_deck_resolved(
+            chosen_deck: Optional[Dict[str, Any]], category_name: str = ""
+        ) -> None:
+            if chosen_deck is None or not isinstance(chosen_deck, dict):
+                study_container.clear()
+                with study_container:
+                    empty_deck_state(
+                        title=f"Môn học '{category_name}' chưa có bộ thẻ nào",
+                        description=(
+                            "Hãy vào Studio để tạo bộ thẻ mới từ bài giảng hoặc chọn môn học khác."
+                        ),
+                        icon="school",
+                        action_text="Tạo bài học mới",
+                        action_url="/",
+                        secondary_text="Chọn lại môn học",
+                        secondary_url="/study",
+                    )
+                return
+
+            resolved_deck_id["value"] = chosen_deck["id"]
+            show_toast(
+                f"Đã chọn ngẫu nhiên: {chosen_deck.get('title', 'Bộ thẻ')} 🎲",
+                "positive",
+            )
+            await load_study_data()
+
+        await _show_category_selection_modal(
+            study_container=study_container,
+            active_user_id=active_user_id,
+            on_deck_resolved=on_deck_resolved,
+        )
+
+    try:
+        loop = asyncio.get_running_loop()
+        loop.create_task(_boot_study_flow())
+    except RuntimeError:
+        pass
+
+
+__all__ = [
+    "render_study_page",
+    "_category_icon",
+    "_run_random_two_level_selection",
+    "_show_category_selection_modal",
+]

@@ -67,6 +67,7 @@ from services.api_decks import (
 from services.api_cards import (
     add_card_tag,
     create_card,
+    create_cards_batch,
     create_tag,
     delete_all_cards,
     delete_card,
@@ -162,6 +163,7 @@ __all__ = [
     "get_cards",
     "get_card_by_id",
     "create_card",
+    "create_cards_batch",
     "update_card",
     "delete_card",
     "delete_all_cards",

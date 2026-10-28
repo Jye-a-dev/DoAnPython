@@ -100,6 +100,8 @@ class Card(db.Model):
     answer = db.Column(db.Text, nullable=False)
     explanation = db.Column(db.Text, nullable=True)
     difficulty = db.Column(db.String(20), default="medium", nullable=False)
+    tts_text = db.Column(db.Text, nullable=True)
+    tts_lang = db.Column(db.String(10), default="en-US", nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
     updated_at = db.Column(
         db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False
@@ -141,6 +143,8 @@ class Card(db.Model):
         difficulty: str = "medium",
         front: str | None = None,
         back: str | None = None,
+        tts_text: str | None = None,
+        tts_lang: str | None = "en-US",
         **kwargs,
     ):
         super().__init__(**kwargs)
@@ -150,6 +154,8 @@ class Card(db.Model):
         self.document_id = document_id
         self.explanation = explanation
         self.difficulty = difficulty
+        self.tts_text = tts_text
+        self.tts_lang = tts_lang if tts_lang is not None else "en-US"
 
     def to_dict(self):
         return {
@@ -162,6 +168,8 @@ class Card(db.Model):
             "back": self.answer,
             "explanation": self.explanation,
             "difficulty": self.difficulty,
+            "tts_text": self.tts_text,
+            "tts_lang": self.tts_lang,
             "tags": [t.name for t in self.tags] if self.tags else [],
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,

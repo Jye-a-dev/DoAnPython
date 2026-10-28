@@ -2,14 +2,17 @@
 ai_service.py — Backend Server AI Gateway client integration.
 Delegates heavy AI inference tasks (Flan-T5 generation, Whisper STT)
 to the standalone AI Pipeline Microservice running on Port 8000 via HTTP.
-Persists resulting cards and telemetry logs into the local SQLite database.
+
+Tách rời AI Inference Phase và Database Commit Phase:
+- persist_to_db=False (mặc định): trả về list[dict] in-memory draft,
+  ghi telemetry vào ai_generation_logs nhưng tuyệt đối KHÔNG commit Card.
+- persist_to_db=True (legacy): commit Card vào SQLite + ghi AIGenerationLog.
 """
 
 from __future__ import annotations
 
 import logging
 import json
-import os
 import time
 from typing import Any, Dict, List, Optional
 from urllib.error import HTTPError, URLError
@@ -33,13 +36,13 @@ _fallback_pipeline = None
 
 
 def _post_json(url: str, payload: Dict[str, Any], timeout: float) -> Any:
-    request = Request(
+    req = Request(
         url,
         data=json.dumps(payload).encode("utf-8"),
         headers={"Content-Type": "application/json"},
         method="POST",
     )
-    with urlopen(request, timeout=timeout) as response:
+    with urlopen(req, timeout=timeout) as response:
         return json.loads(response.read().decode("utf-8"))
 
 
@@ -56,13 +59,13 @@ def _post_multipart(
         + file_bytes
         + f"\r\n--{boundary}--\r\n".encode("ascii")
     )
-    request = Request(
+    req = Request(
         f"{url}?{urlencode({'language': language})}",
         data=body,
         headers={"Content-Type": f"multipart/form-data; boundary={boundary}"},
         method="POST",
     )
-    with urlopen(request, timeout=timeout) as response:
+    with urlopen(req, timeout=timeout) as response:
         return json.loads(response.read().decode("utf-8"))
 
 
@@ -101,11 +104,7 @@ def generate_flashcards_service(
     last_exc = None
     for target_url in candidate_urls:
         try:
-            data = _post_json(
-                target_url,
-                payload,
-                timeout=120.0,
-            )
+            data = _post_json(target_url, payload, timeout=120.0)
             if isinstance(data, dict):
                 return {
                     "count": data.get("count", len(data.get("cards", []))),
@@ -124,7 +123,7 @@ def generate_flashcards_service(
             continue
 
     logger.warning(
-        "AI Pipeline unreachable at candidate endpoints (%s). Attempting local fallback if available.",
+        "AI Pipeline unreachable at candidate endpoints (%s). Attempting local fallback.",
         last_exc,
     )
     pipeline = get_pipeline()
@@ -138,11 +137,7 @@ def generate_flashcards_service(
             if chunks
             else []
         )
-        return {
-            "count": len(cards),
-            "cards": cards,
-            "inference_time_seconds": 0.0,
-        }
+        return {"count": len(cards), "cards": cards, "inference_time_seconds": 0.0}
     raise RuntimeError(
         f"Lỗi kết nối tới AI Pipeline Microservice (Port 8000): {str(last_exc)}"
     ) from last_exc
@@ -153,10 +148,7 @@ def transcribe_audio_service(
     filename: str = "audio.wav",
     language: str = "vi",
 ) -> Dict[str, Any]:
-    """
-    Forward uploaded audio bytes to AI Pipeline Microservice (POST /api/pi/transcribe)
-    via multipart/form-data.
-    """
+    """Forward uploaded audio bytes to AI Pipeline Microservice via multipart/form-data."""
     if not file_bytes:
         raise ValueError("Audio binary payload is empty.")
 
@@ -202,21 +194,35 @@ def check_pipeline_health_service(timeout: float = 3.0) -> Dict[str, Any]:
 
 
 def generate_cards_from_document_id(
-    doc_id: int, deck_id: int, user_id: int
+    doc_id: int,
+    deck_id: Optional[int],
+    user_id: int,
+    persist_to_db: bool = False,
 ) -> Dict[str, Any]:
     """
-    Extract text from Document stored in database, trigger AI Pipeline for card generation,
-    persist resulting cards to SQLite, and write metrics to ai_generation_logs.
+    Extract text từ Document, trigger AI Pipeline, rồi:
+
+    - persist_to_db=False (mặc định — Draft Mode):
+        Đóng gói thành list[dict] in-memory draft.
+        Ghi telemetry vào ai_generation_logs.
+        Tuyệt đối KHÔNG db.session.add(Card) hay commit Card.
+
+    - persist_to_db=True (Persist Mode / legacy):
+        Commit Card vào SQLite.
+        Ghi AIGenerationLog.
     """
     # 1. Validate Document
     document = db.session.get(Document, doc_id)
     if not document:
         raise ValueError(f"Không tìm thấy tài liệu với ID: {doc_id}")
 
-    # 2. Validate Deck
-    deck = db.session.get(Deck, deck_id)
-    if not deck:
-        raise ValueError(f"Không tìm thấy bộ thẻ (Deck) với ID: {deck_id}")
+    # 2. Validate Deck khi persist_to_db
+    if persist_to_db:
+        if deck_id is None:
+            raise ValueError("deck_id là bắt buộc khi persist_to_db=True")
+        deck = db.session.get(Deck, deck_id)
+        if not deck:
+            raise ValueError(f"Không tìm thấy bộ thẻ (Deck) với ID: {deck_id}")
 
     extracted_text = document.extracted_text or ""
     if not extracted_text.strip():
@@ -226,6 +232,7 @@ def generate_cards_from_document_id(
     status = "SUCCESS"
     error_message: Optional[str] = None
     saved_cards: List[Card] = []
+    draft_cards: List[Dict[str, Any]] = []
 
     try:
         # 3. Call AI Pipeline Microservice
@@ -236,42 +243,68 @@ def generate_cards_from_document_id(
             else pipeline_res
         )
 
-        # 4. Save cards to database
-        for pair in generated_pairs:
-            q = pair.get("question", "").strip()
-            a = pair.get("answer", "").strip()
-            if q and a:
-                card = Card(
-                    deck_id=deck_id,
-                    document_id=doc_id,
-                    question=q,
-                    answer=a,
-                    difficulty="medium",
-                )
-                db.session.add(card)
-                saved_cards.append(card)
+        if persist_to_db:
+            # 4a. PERSIST MODE: Commit cards vào SQLite
+            for pair in generated_pairs:
+                q = pair.get("question", "").strip()
+                a = pair.get("answer", "").strip()
+                if q and a:
+                    card = Card(
+                        deck_id=deck_id,
+                        document_id=doc_id,
+                        question=q,
+                        answer=a,
+                        difficulty="medium",
+                        tts_text=q,
+                        tts_lang="en-US",
+                    )
+                    db.session.add(card)
+                    saved_cards.append(card)
+            db.session.commit()
+        else:
+            # 4b. DRAFT MODE: Chỉ đóng gói dict, KHÔNG add/commit Card nào
+            for pair in generated_pairs:
+                q = pair.get("question", "").strip()
+                a = pair.get("answer", "").strip()
+                if q and a:
+                    draft_cards.append(
+                        {
+                            "question": q,
+                            "answer": a,
+                            "explanation": pair.get("explanation", ""),
+                            "difficulty": pair.get("difficulty", "medium"),
+                            "tts_text": q,
+                            "tts_lang": "en-US",
+                        }
+                    )
 
-        db.session.commit()
     except Exception as exc:
-        db.session.rollback()
+        if persist_to_db:
+            db.session.rollback()
         status = "FAILED"
         error_message = str(exc)
         logger.exception("Error generating flashcards for doc_id %d: %s", doc_id, exc)
 
     inference_time = time.perf_counter() - start_time
 
-    # 5. Persist audit telemetry in ai_generation_logs
+    # 5. Persist audit telemetry in ai_generation_logs (luôn chạy)
+    cards_count = len(saved_cards) if persist_to_db else len(draft_cards)
     approx_prompt_tokens = len(extracted_text.split())
-    approx_comp_tokens = sum(
-        len(c.question.split()) + len(c.answer.split()) for c in saved_cards
-    )
+    if persist_to_db:
+        approx_comp_tokens = sum(
+            len(c.question.split()) + len(c.answer.split()) for c in saved_cards
+        )
+    else:
+        approx_comp_tokens = sum(
+            len(d["question"].split()) + len(d["answer"].split()) for d in draft_cards
+        )
 
     log = AIGenerationLog()
     log.user_id = user_id
     log.document_id = doc_id
     log.deck_id = deck_id
     log.model_name = "flan-t5-base"
-    log.cards_generated = len(saved_cards)
+    log.cards_generated = cards_count
     log.inference_time_seconds = round(inference_time, 3)
     log.prompt_tokens = approx_prompt_tokens
     log.completion_tokens = approx_comp_tokens
@@ -283,13 +316,25 @@ def generate_cards_from_document_id(
     if status == "FAILED":
         raise RuntimeError(f"Lỗi AI Pipeline: {error_message}")
 
+    if persist_to_db:
+        return {
+            "status": "SUCCESS",
+            "document_id": doc_id,
+            "deck_id": deck_id,
+            "user_id": user_id,
+            "cards_generated": len(saved_cards),
+            "inference_time_seconds": round(inference_time, 3),
+            "log_id": log.id,
+            "cards": [card.to_dict() for card in saved_cards],
+        }
     return {
-        "status": "SUCCESS",
+        "status": "DRAFT",
         "document_id": doc_id,
         "deck_id": deck_id,
         "user_id": user_id,
-        "cards_generated": len(saved_cards),
+        "count": len(draft_cards),
+        "cards_generated": len(draft_cards),
         "inference_time_seconds": round(inference_time, 3),
         "log_id": log.id,
-        "cards": [card.to_dict() for card in saved_cards],
+        "cards": draft_cards,
     }
