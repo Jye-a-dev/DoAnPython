@@ -158,7 +158,7 @@ def render_flashcard(
                     with ui.row().classes("items-center gap-2"):
                         # Nút TTS — chỉ hiển thị khi có tts_text
                         tts_btn_front = ui.button(icon="volume_up").props(
-                            "flat round dense size=sm color=indigo-6"
+                            "flat round dense size=sm color=indigo-600"
                         )
                         if not has_tts:
                             tts_btn_front.set_visibility(False)
@@ -205,7 +205,7 @@ def render_flashcard(
                     with ui.row().classes("items-center gap-2"):
                         # Nút TTS trên mặt sau — chỉ hiển thị khi có tts_text
                         tts_btn_back = ui.button(icon="volume_up").props(
-                            "flat round dense size=sm color=indigo-6"
+                            "flat round dense size=sm color=indigo-600"
                         )
                         if not has_tts:
                             tts_btn_back.set_visibility(False)
@@ -270,20 +270,20 @@ def render_flashcard(
         tts_text_safe = str(tts_text).strip()
         tts_lang_safe = str(tts_lang).strip() if tts_lang else "en-US"
 
-        def handle_tts(e):  # noqa: ARG001
-            js = f"""
+        def play_tts(e):  # noqa: ARG001
+            js_code = f"""
             (function() {{
                 window.speechSynthesis.cancel();
-                var u = new SpeechSynthesisUtterance({json.dumps(tts_text_safe)});
-                u.lang = {json.dumps(tts_lang_safe)};
-                window.speechSynthesis.speak(u);
+                const utterance = new SpeechSynthesisUtterance({json.dumps(str(tts_text_safe))});
+                utterance.lang = {json.dumps(tts_lang_safe)};
+                window.speechSynthesis.speak(utterance);
             }})();
             """
-            ui.run_javascript(js)
+            ui.run_javascript(js_code)
 
         # click.stop ngăn event nổi bọt — không kích hoạt flip 3D
-        tts_btn_front.on("click.stop", handle_tts)
-        tts_btn_back.on("click.stop", handle_tts)
+        tts_btn_front.on("click.stop", play_tts)
+        tts_btn_back.on("click.stop", play_tts)
 
     return FlashcardController(
         toggle_func=toggle,

@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 from typing import Any
 from flask import Blueprint, jsonify, request
 from app.core.database import db
-from app.models.flashcard import Deck
+from app.models.flashcard import Card, Deck
 
 decks_bp = Blueprint("decks", __name__, url_prefix="/api/decks")
 
@@ -176,6 +176,33 @@ def get_deck_detail(deck_id: int):
     deck_cards: Any = getattr(deck, "cards", [])
     deck_dict["cards"] = [c.to_dict() for c in deck_cards] if deck_cards else []
     return jsonify(deck_dict), 200
+
+
+@decks_bp.route("/<int:deck_id>/cards", methods=["GET"])
+def get_deck_cards_endpoint(deck_id: int):
+    """
+    Lấy danh sách các thẻ thuộc một bộ thẻ (GET /api/decks/{id}/cards)
+    ---
+    tags:
+      - Decks
+    summary: Danh sách toàn bộ flashcards thuộc về một bộ thẻ
+    parameters:
+      - name: deck_id
+        in: path
+        type: integer
+        required: true
+        description: ID bộ thẻ
+    responses:
+      200:
+        description: Danh sách flashcards kèm trường tts_text, tts_lang
+      404:
+        description: Không tìm thấy bộ thẻ
+    """
+    deck = db.session.get(Deck, deck_id)
+    if not deck:
+        return jsonify({"error": f"Không tìm thấy bộ thẻ với ID {deck_id}"}), 404
+    cards = Card.query.filter_by(deck_id=deck_id).order_by(Card.created_at.asc()).all()
+    return jsonify([c.to_dict() for c in cards]), 200
 
 
 @decks_bp.route("/<int:deck_id>", methods=["PUT"])

@@ -91,7 +91,14 @@ async def create_cards_batch(
 async def update_card(card_id: int, **fields: Any) -> dict[str, Any]:
     try:
         client = get_client()
-        res = await client.put(f"/cards/{card_id}", json=fields)
+        payload = (
+            fields["data"]
+            if "data" in fields
+            and len(fields) == 1
+            and isinstance(fields["data"], dict)
+            else fields
+        )
+        res = await client.put(f"/cards/{card_id}", json=payload)
         res.raise_for_status()
         return res.json()
     except Exception as err:

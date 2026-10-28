@@ -107,6 +107,14 @@ def create_new_card():
               type: integer
               example: 1
               description: ID tài liệu nguồn (nếu có)
+            tts_text:
+              type: string
+              example: "Mother"
+              description: Văn bản dùng để phát âm (TTS)
+            tts_lang:
+              type: string
+              example: "en-US"
+              description: Mã ngôn ngữ TTS (VD: en-US, vi-VN)
     responses:
       201:
         description: Tạo flashcard thành công
@@ -118,6 +126,8 @@ def create_new_card():
         description: Lỗi máy chủ
     """
     data: dict[str, Any] = request.get_json(silent=True) or {}
+    if isinstance(data.get("data"), dict):
+        data = data["data"]
     question = (data.get("question") or "").strip()
     answer = (data.get("answer") or "").strip()
 
@@ -130,6 +140,9 @@ def create_new_card():
         if not deck:
             return jsonify({"error": f"Không tìm thấy bộ thẻ ID {deck_id}"}), 404
 
+    tts_text = (data.get("tts_text") or "").strip() or question
+    tts_lang = (data.get("tts_lang") or "").strip() or "en-US"
+
     card = Card(
         deck_id=int(deck_id) if deck_id is not None else None,
         document_id=int(data["document_id"]) if data.get("document_id") else None,
@@ -137,8 +150,8 @@ def create_new_card():
         answer=answer,
         explanation=data.get("explanation"),
         difficulty=data.get("difficulty", "medium"),
-        tts_text=data.get("tts_text") or question,
-        tts_lang=data.get("tts_lang") or "en-US",
+        tts_text=tts_text,
+        tts_lang=tts_lang,
     )
 
     try:
@@ -205,6 +218,10 @@ def update_card_detail(card_id: int):
               enum: [easy, medium, hard]
             deck_id:
               type: integer
+            tts_text:
+              type: string
+            tts_lang:
+              type: string
     responses:
       200:
         description: Cập nhật thành công
@@ -218,6 +235,8 @@ def update_card_detail(card_id: int):
         return jsonify({"error": f"Không tìm thấy thẻ với ID {card_id}"}), 404
 
     data = request.get_json(silent=True) or {}
+    if isinstance(data.get("data"), dict):
+        data = data["data"]
     if "question" in data:
         card.question = str(data["question"]).strip()
     if "answer" in data:
@@ -229,9 +248,11 @@ def update_card_detail(card_id: int):
     if "deck_id" in data:
         card.deck_id = int(data["deck_id"]) if data["deck_id"] is not None else None
     if "tts_text" in data:
-        card.tts_text = data["tts_text"]
+        raw_tts = str(data["tts_text"]).strip() if data["tts_text"] is not None else ""
+        card.tts_text = raw_tts if raw_tts else card.question
     if "tts_lang" in data:
-        card.tts_lang = data["tts_lang"]
+        raw_lang = str(data["tts_lang"]).strip() if data["tts_lang"] is not None else ""
+        card.tts_lang = raw_lang if raw_lang else "en-US"
 
     try:
         db.session.commit()

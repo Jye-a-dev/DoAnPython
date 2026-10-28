@@ -20,7 +20,7 @@ load_dotenv(_CLIENT_DIR / ".env")
 from nicegui import ui
 
 from pages.home import render_home_page
-from pages.study import render_study_page
+from pages.study import render_deck_picker, render_study_page
 from pages.decks import render_decks_page
 from pages.cards import render_cards_page
 from pages.login import render_login_page
@@ -75,10 +75,21 @@ async def cards_route() -> None:
 
 @ui.page("/study")
 async def study_route(deck_id: Optional[int] = None, tag: Optional[str] = None) -> None:
-    """Route bảo vệ (Protected): Lặp lại ngắt quãng SM-2 Focus Mode kèm Hotkeys 1-4 & Space."""
+    """Route bảo vệ: Màn hình Chọn Bộ Thẻ (Deck Picker) hoặc học khi có query ?deck_id=."""
     if not require_auth():
         return
-    await render_study_page(deck_id=deck_id, tag=tag)
+    if deck_id is not None:
+        await render_study_page(deck_identifier=str(deck_id), tag=tag)
+    else:
+        await render_deck_picker()
+
+
+@ui.page("/study/{deck_identifier}")
+async def study_deck_route(deck_identifier: str, tag: Optional[str] = None) -> None:
+    """Route bảo vệ: Lặp lại ngắt quãng SM-2 Focus Mode cho Deck định danh theo ID hoặc Name."""
+    if not require_auth():
+        return
+    await render_study_page(deck_identifier=deck_identifier, tag=tag)
 
 
 @ui.page("/profile")

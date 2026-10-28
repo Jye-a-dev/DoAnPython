@@ -123,7 +123,7 @@ def create_cards_batch():
         if diff not in ("easy", "medium", "hard"):
             diff = "medium"
 
-        tts_text = item.get("tts_text") or q
+        tts_text = item.get("tts_text")
         tts_lang = item.get("tts_lang") or "en-US"
 
         card = Card(
