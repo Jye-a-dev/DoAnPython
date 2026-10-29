@@ -4,6 +4,7 @@ from typing import Any, Callable, Dict, Optional
 from nicegui import ui
 
 from components.layout import TOKENS, show_toast
+from components.streak_heatmap import render_streak_heatmap
 from services import api
 from services.auth_guard import logout
 
@@ -29,9 +30,7 @@ def render_profile_stats_tab(
     ):
         with ui.row().classes("w-full items-center justify-between flex-wrap gap-6"):
             with ui.row().classes("items-center gap-5"):
-                initial_char = (
-                    str(display_name)[:1] if display_name else "U"
-                ).upper()
+                initial_char = (str(display_name)[:1] if display_name else "U").upper()
                 with ui.avatar(size="72px").classes(
                     f"ring-4 ring-indigo-100 bg-gradient-to-tr from-{TOKENS['primary']} to-indigo-500 "
                     "text-white text-2xl font-black shadow-md select-none"
@@ -51,7 +50,9 @@ def render_profile_stats_tab(
                     ui.label(email).classes(
                         f"text-sm font-medium text-{TOKENS['text_secondary']}"
                     )
-                    with ui.row().classes("items-center gap-1.5 text-xs text-slate-400 mt-1"):
+                    with ui.row().classes(
+                        "items-center gap-1.5 text-xs text-slate-400 mt-1"
+                    ):
                         ui.icon("event", size="16px")
                         ui.label(f"Ngày tham gia: {joined_date}")
 
@@ -67,7 +68,9 @@ def render_profile_stats_tab(
             f"text-lg font-extrabold text-{TOKENS['text_primary']}"
         )
 
-        with ui.grid().classes("w-full grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4"):
+        with ui.grid().classes(
+            "w-full grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4"
+        ):
             # KPI 1: Tổng số Deck
             with ui.card().classes(
                 "p-5 rounded-2xl bg-white border border-slate-200/80 shadow-xs flex flex-col justify-between"
@@ -84,9 +87,7 @@ def render_profile_stats_tab(
                     ui.label(str(total_decks)).classes(
                         "text-3xl font-black text-slate-900"
                     )
-                    ui.label("decks").classes(
-                        "text-xs font-semibold text-slate-400"
-                    )
+                    ui.label("decks").classes("text-xs font-semibold text-slate-400")
 
             # KPI 2: Thẻ đã thuộc
             with ui.card().classes(
@@ -124,9 +125,7 @@ def render_profile_stats_tab(
                     ui.label(str(total_sessions)).classes(
                         "text-3xl font-black text-blue-600"
                     )
-                    ui.label("phiên").classes(
-                        "text-xs font-semibold text-slate-400"
-                    )
+                    ui.label("phiên").classes("text-xs font-semibold text-slate-400")
 
             # KPI 4: Chuỗi ngày học Streak
             with ui.card().classes(
@@ -148,7 +147,10 @@ def render_profile_stats_tab(
                         "text-xs font-semibold text-slate-400"
                     )
 
-    # KHỐI 3: CÀI ĐẶT MỤC TIÊU (DAILY CARD GOAL)
+    # KHỐI 3: HEATMAP CHUỖI ÔN TẬP ĐÓNG BĂNG
+    render_streak_heatmap(user_id=user_id)
+
+    # KHỐI 4: CÀI ĐẶT MỤC TIÊU (DAILY CARD GOAL)
     with ui.card().classes(
         "w-full p-6 md:p-8 rounded-3xl bg-white border border-slate-200/80 shadow-sm gap-5"
     ):
@@ -186,7 +188,9 @@ def render_profile_stats_tab(
                     if p_id:
                         res = await api.update_profile(p_id, daily_card_goal=val)
                     else:
-                        res = await api.create_profile(user_id=user_id, daily_card_goal=val)
+                        res = await api.create_profile(
+                            user_id=user_id, daily_card_goal=val
+                        )
 
                     if isinstance(res, dict) and res.get("error"):
                         show_toast(
@@ -219,4 +223,3 @@ def render_profile_stats_tab(
             "w-full max-w-md py-3.5 bg-rose-500 hover:bg-rose-600 text-white font-extrabold rounded-2xl "
             "shadow-lg hover:shadow-rose-500/25 transition-all duration-200 cursor-pointer"
         )
-

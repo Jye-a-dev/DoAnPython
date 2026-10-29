@@ -18,10 +18,15 @@ class StudyStage:
         self,
         on_rating: Callable[[int], Any],
         on_flip_change: Optional[Callable[[bool], None]] = None,
+        reverse_mode: bool = False,
+        on_edit_note: Optional[Callable[[Dict[str, Any]], None]] = None,
     ):
         self.on_rating_cb = on_rating
         self.on_flip_change_cb = on_flip_change
+        self.reverse_mode: bool = reverse_mode
+        self.on_edit_note_cb = on_edit_note
         self.card_controller: Optional[FlashcardController] = None
+        self.current_card_data: Optional[Dict[str, Any]] = None
         self.is_animating: bool = False
 
         self.container = ui.column().classes("w-full items-center justify-center")
@@ -35,14 +40,23 @@ class StudyStage:
                 on_space_pressed=self.toggle_flip,
             )
 
+    def set_reverse_mode(self, reverse: bool) -> None:
+        """Bật/tắt chế độ đảo ngược và render lại thẻ tức thì."""
+        self.reverse_mode = reverse
+        if self.current_card_data:
+            self.render_card(self.current_card_data)
+
     def render_card(self, card_data: Dict[str, Any]) -> None:
         """Render thẻ flashcard hiện tại lên giữa màn hình."""
+        self.current_card_data = card_data
         self.slot.clear()
         with self.slot:
             self.card_controller = render_flashcard(
                 card_data=card_data,
                 is_flipped_default=False,
                 on_flip_callback=self.on_flip_change_cb,
+                reverse_mode=self.reverse_mode,
+                on_edit_note=self.on_edit_note_cb,
             )
 
     def toggle_flip(self) -> None:
@@ -58,14 +72,18 @@ class StudyStage:
         self.action_bar_ref["set_active"](False)
 
         # Hiệu ứng trượt thẻ ra ngoài
-        self.slot.classes(add="opacity-0 -translate-x-8", remove="opacity-100 translate-x-0")
+        self.slot.classes(
+            add="opacity-0 -translate-x-8", remove="opacity-100 translate-x-0"
+        )
         await asyncio.sleep(0.18)
 
         # Chuyển xử lý sang callback bên ngoài
         await self.on_rating_cb(rating)
 
         # Trượt thẻ tiếp theo vào
-        self.slot.classes(add="opacity-100 translate-x-0", remove="opacity-0 -translate-x-8")
+        self.slot.classes(
+            add="opacity-100 translate-x-0", remove="opacity-0 -translate-x-8"
+        )
         await asyncio.sleep(0.1)
 
         self.is_animating = False
@@ -79,7 +97,13 @@ class StudyStage:
 def create_study_stage(
     on_rating: Callable[[int], Any],
     on_flip_change: Optional[Callable[[bool], None]] = None,
+    reverse_mode: bool = False,
+    on_edit_note: Optional[Callable[[Dict[str, Any]], None]] = None,
 ) -> StudyStage:
     """Factory khởi tạo StudyStage component."""
-    return StudyStage(on_rating=on_rating, on_flip_change=on_flip_change)
-
+    return StudyStage(
+        on_rating=on_rating,
+        on_flip_change=on_flip_change,
+        reverse_mode=reverse_mode,
+        on_edit_note=on_edit_note,
+    )

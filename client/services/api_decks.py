@@ -24,6 +24,8 @@ from services.decks.decks_service import (
     delete_deck,
     get_deck_by_id,
     get_decks,
+    get_export_deck_url,
+    import_deck_cards,
     update_deck,
 )
 from services.decks.favorites_service import (
@@ -49,6 +51,8 @@ __all__ = [
     "create_deck",
     "update_deck",
     "delete_deck",
+    "import_deck_cards",
+    "get_export_deck_url",
     "get_favorites",
     "get_favorite_by_id",
     "add_favorite",

@@ -28,6 +28,10 @@ from app.api.cards_routes.generator_routes import (
     generate_cards_from_doc_backward_compat,
     register_generator_routes,
 )
+from app.api.cards_routes.note_routes import (
+    register_note_routes,
+    update_card_notes,
+)
 
 cards_bp = Blueprint("cards", __name__, url_prefix="/api/cards")
 
@@ -36,6 +40,7 @@ register_crud_routes(cards_bp)
 register_batch_routes(cards_bp)
 register_tag_routes(cards_bp)
 register_generator_routes(cards_bp)
+register_note_routes(cards_bp)
 
 __all__ = [
     "cards_bp",
@@ -43,6 +48,7 @@ __all__ = [
     "create_new_card",
     "get_card_detail",
     "update_card_detail",
+    "update_card_notes",
     "delete_card_endpoint",
     "delete_all_cards_endpoint",
     "create_cards_batch",

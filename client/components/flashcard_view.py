@@ -59,21 +59,11 @@ def render_flashcard(
     card_data: Dict[str, Any],
     is_flipped_default: bool = False,
     on_flip_callback: Optional[Callable[[bool], None]] = None,
+    reverse_mode: bool = False,
+    on_edit_note: Optional[Callable[[Dict[str, Any]], None]] = None,
 ) -> FlashcardController:
     """Thẻ Flashcard 3D CSS Flip độc lập theo Design System TOKENS.
-
-    - Khung kích thước cố định responsive: w-full max-w-xl h-80 cursor-pointer select-none.
-    - Cơ chế Flip 3D (CSS perspective: 1000px & transform-style: preserve-3d, transition-transform duration-500).
-    - Nút TTS loa volume_up chỉ hiển thị khi card_data["tts_text"] có giá trị.
-    - Sự kiện click.stop trên nút TTS ngăn triệt để sự kiện nổi bọt lên flip container.
-    - Mặt trước (Front / Question):
-        * Cụm Badge trên cùng: Độ khó (TOKENS), Tag chủ đề (bg-slate-100 text-slate-600).
-        * Câu hỏi căn giữa font lớn (text-xl font-bold text-slate-800 text-center).
-        * Gợi ý tương tác mờ ở đáy: 'Nhấp hoặc bấm [Space] để xem đáp án'.
-    - Mặt sau (Back / Answer):
-        * Nhãn 'ĐÁP ÁN' in đậm màu indigo-600.
-        * Nội dung đáp án rõ ràng (text-lg font-semibold text-slate-900).
-        * Khung giải thích chi tiết (bg-slate-50 rounded-xl p-3 border border-slate-200 text-sm text-slate-600 w-full mt-2).
+    Hỗ trợ Chế độ đảo ngược (Reverse Study Mode) và Ghi chú cá nhân (Personal Notes).
     """
     ui.add_head_html("""
     <style>
@@ -94,10 +84,13 @@ def render_flashcard(
     </style>
     """)
 
-    # Trích xuất dữ liệu thẻ card_data
-    question_text = card_data.get("question", "Nội dung câu hỏi")
-    answer_text = card_data.get("answer", "Nội dung đáp án")
+    # Trích xuất dữ liệu thẻ card_data và hoán đổi nếu ở Chế độ đảo ngược
+    raw_question = card_data.get("question", "Nội dung câu hỏi")
+    raw_answer = card_data.get("answer", "Nội dung đáp án")
+    question_text = raw_answer if reverse_mode else raw_question
+    answer_text = raw_question if reverse_mode else raw_answer
     explanation_text = card_data.get("explanation", "")
+    personal_notes = card_data.get("personal_notes")
     difficulty_meta = _get_difficulty_badge(card_data.get("difficulty", "Trung bình"))
 
     # Trích xuất thông tin TTS
@@ -145,9 +138,16 @@ def render_flashcard(
                 "absolute inset-0 w-full h-full backface-hidden bg-white border border-slate-200/90 "
                 "rounded-2xl p-6 shadow-sm hover:shadow-md transition-shadow duration-200 flex flex-col justify-between"
             ):
-                # Cụm Badge trên cùng: Độ khó (TOKENS) + Tag chủ đề + Nút TTS
+                # Cụm Badge trên cùng: Độ khó (TOKENS) + Tag chủ đề + Nút TTS + Ghi chú
                 with ui.row().classes("w-full items-center justify-between"):
                     with ui.row().classes("items-center gap-1.5 flex-wrap"):
+                        if reverse_mode:
+                            with ui.row().classes(
+                                "items-center gap-1 px-2 py-0.5 rounded-md bg-amber-50 text-amber-700 border border-amber-200 text-xs font-bold"
+                            ):
+                                ui.icon("sync_alt", size="12px")
+                                ui.label("ĐẢO NGƯỢC")
+
                         for tag in tag_list:
                             with ui.row().classes(
                                 "items-center gap-1 px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 border border-slate-200/80 text-xs font-medium"
@@ -155,7 +155,13 @@ def render_flashcard(
                                 ui.icon("label", size="12px").classes("text-slate-400")
                                 ui.label(tag)
 
-                    with ui.row().classes("items-center gap-2"):
+                    with ui.row().classes("items-center gap-1.5"):
+                        note_btn_front = (
+                            ui.button(icon="edit_note")
+                            .props("flat round dense size=sm color=amber-7")
+                            .tooltip("Ghi chú cá nhân / Mẹo nhớ")
+                        )
+
                         # Nút TTS — chỉ hiển thị khi có tts_text
                         tts_btn_front = ui.button(icon="volume_up").props(
                             "flat round dense size=sm color=indigo-600"
@@ -171,11 +177,19 @@ def render_flashcard(
 
                 # Nội dung câu hỏi căn giữa với font chữ lớn
                 with ui.column().classes(
-                    "w-full items-center justify-center my-auto text-center px-2 py-4"
+                    "w-full items-center justify-center my-auto text-center px-2 py-3"
                 ):
                     ui.label(question_text).classes(
                         "text-xl font-bold text-slate-800 text-center leading-relaxed max-w-lg"
                     )
+                    if personal_notes:
+                        with ui.row().classes(
+                            "items-center gap-1.5 px-3 py-1 rounded-xl bg-amber-50/80 border border-amber-200 text-xs text-amber-800 mt-2 max-w-md mx-auto"
+                        ):
+                            ui.icon("lightbulb", size="14px").classes(
+                                "text-amber-500 shrink-0"
+                            )
+                            ui.label(f"Mẹo: {personal_notes}").classes("truncate")
 
                 # Gợi ý tương tác mờ ở đáy
                 with ui.row().classes(
@@ -199,10 +213,16 @@ def render_flashcard(
                 with ui.row().classes(
                     "w-full items-center justify-between pb-2 border-b border-slate-100"
                 ):
-                    ui.label("ĐÁP ÁN").classes(
+                    ui.label("CÂU HỎI CẦN ĐOÁN" if reverse_mode else "ĐÁP ÁN").classes(
                         "text-xs font-bold text-indigo-600 tracking-wider uppercase"
                     )
-                    with ui.row().classes("items-center gap-2"):
+                    with ui.row().classes("items-center gap-1.5"):
+                        note_btn_back = (
+                            ui.button(icon="edit_note")
+                            .props("flat round dense size=sm color=amber-7")
+                            .tooltip("Ghi chú cá nhân / Mẹo nhớ")
+                        )
+
                         # Nút TTS trên mặt sau — chỉ hiển thị khi có tts_text
                         tts_btn_back = ui.button(icon="volume_up").props(
                             "flat round dense size=sm color=indigo-600"
@@ -284,6 +304,17 @@ def render_flashcard(
         # click.stop ngăn event nổi bọt — không kích hoạt flip 3D
         tts_btn_front.on("click.stop", play_tts)
         tts_btn_back.on("click.stop", play_tts)
+
+    if on_edit_note:
+
+        def trigger_note(e):
+            on_edit_note(card_data)
+
+        note_btn_front.on("click.stop", trigger_note)
+        note_btn_back.on("click.stop", trigger_note)
+    else:
+        note_btn_front.set_visibility(False)
+        note_btn_back.set_visibility(False)
 
     return FlashcardController(
         toggle_func=toggle,

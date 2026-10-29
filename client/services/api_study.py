@@ -266,6 +266,22 @@ async def delete_study_review(review_id: int) -> dict[str, Any]:
         return _handle_http_error(err, "xóa study_review")
 
 
+async def get_streak_heatmap(
+    user_id: int, year: Optional[int] = None
+) -> dict[str, Any]:
+    """Lấy dữ liệu Heatmap chuỗi ôn tập thẻ SM-2 theo năm."""
+    try:
+        client = get_client()
+        params: dict[str, Any] = {"user_id": user_id}
+        if year is not None:
+            params["year"] = year
+        res = await client.get("/analytics/streak-heatmap", params=params)
+        res.raise_for_status()
+        return res.json()
+    except Exception as err:
+        return _handle_http_error(err, "lấy streak heatmap")
+
+
 # ===========================================================================
 # 14. HEALTH & SYSTEM API
 # ===========================================================================

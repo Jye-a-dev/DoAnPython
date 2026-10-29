@@ -152,6 +152,7 @@ def create_new_card():
         difficulty=data.get("difficulty", "medium"),
         tts_text=tts_text,
         tts_lang=tts_lang,
+        personal_notes=data.get("personal_notes"),
     )
 
     try:
@@ -253,6 +254,8 @@ def update_card_detail(card_id: int):
     if "tts_lang" in data:
         raw_lang = str(data["tts_lang"]).strip() if data["tts_lang"] is not None else ""
         card.tts_lang = raw_lang if raw_lang else "en-US"
+    if "personal_notes" in data:
+        card.personal_notes = str(data["personal_notes"]).strip() if data["personal_notes"] is not None else None
 
     try:
         db.session.commit()

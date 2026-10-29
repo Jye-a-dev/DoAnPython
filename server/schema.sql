@@ -115,15 +115,17 @@ CREATE TABLE IF NOT EXISTS cards (
     difficulty VARCHAR(20) NOT NULL DEFAULT 'medium',
     tts_text TEXT,
     tts_lang VARCHAR(10) DEFAULT 'en-US',
+    personal_notes TEXT,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (deck_id) REFERENCES decks (id) ON DELETE CASCADE,
     FOREIGN KEY (document_id) REFERENCES documents (id) ON DELETE SET NULL
 );
 
--- Migration: thêm cột TTS vào bảng cards nếu chưa tồn tại (chạy trên DB hiện có)
+-- Migration: thêm cột TTS & personal_notes vào bảng cards nếu chưa tồn tại (chạy trên DB hiện có)
 -- ALTER TABLE cards ADD COLUMN tts_text TEXT;
 -- ALTER TABLE cards ADD COLUMN tts_lang VARCHAR(10) DEFAULT 'en-US';
+-- ALTER TABLE cards ADD COLUMN personal_notes TEXT;
 
 CREATE INDEX IF NOT EXISTS idx_cards_deck_id ON cards (deck_id);
 CREATE INDEX IF NOT EXISTS idx_cards_document_id ON cards (document_id);

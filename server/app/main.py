@@ -34,10 +34,12 @@ from app.core.database import db, init_db
 from app.api import (
     ai_gateway_bp,
     ai_logs_bp,
+    analytics_bp,
     auth_bp,
     card_tags_bp,
     cards_bp,
     categories_bp,
+    deck_io_bp,
     decks_bp,
     documents_bp,
     favorites_bp,
@@ -94,53 +96,42 @@ def create_app():
         "basePath": "/",
         "schemes": ["http"],
         "tags": [
-            {
-                "name": "Auth",
-                "description": "Xác thực tài khoản và cấp phiên làm việc",
-            },
+            {"name": "Auth", "description": "Xác thực tài khoản và cấp phiên làm việc"},
             {
                 "name": "AI Generator",
-                "description": "Tiến trình sinh Q&A flashcards tự động và bóc băng âm thanh với AI Pipeline",
+                "description": "Tiến trình sinh Q&A flashcards tự động",
             },
             {
                 "name": "System",
-                "description": "Healthcheck Server, SQLite DB và ping AI Pipeline; giám sát CPU, RAM, mạng",
+                "description": "Healthcheck Server, SQLite DB và giám sát",
             },
             {
                 "name": "Users & Profiles",
-                "description": "Quản lý tài khoản người dùng (users) và hồ sơ cá nhân (user_profiles)",
+                "description": "Quản lý người dùng và hồ sơ cá nhân",
             },
-            {
-                "name": "Categories",
-                "description": "Quản lý danh mục phân loại bài học (categories)",
-            },
-            {
-                "name": "Folders",
-                "description": "Quản lý thư mục cây phân cấp (folders)",
-            },
+            {"name": "Categories", "description": "Quản lý danh mục phân loại bài học"},
+            {"name": "Folders", "description": "Quản lý thư mục cây phân cấp"},
             {
                 "name": "Documents",
-                "description": "Quản lý và upload tài liệu in-memory BLOB, chống trùng content_hash (documents)",
+                "description": "Quản lý và upload tài liệu in-memory BLOB",
             },
             {
                 "name": "Decks",
-                "description": "Quản lý bộ thẻ ghi nhớ (decks)",
+                "description": "Quản lý bộ thẻ ghi nhớ và xuất/nhập (IO)",
             },
             {
                 "name": "Cards & Tags",
-                "description": "Quản lý thẻ flashcards (cards), nhãn (tags) và bảng liên kết (card_tags)",
+                "description": "Quản lý flashcards, ghi chú và nhãn",
             },
+            {"name": "Study & SRS Reviews", "description": "Quản lý phiên học và SM-2"},
             {
-                "name": "Study & SRS Reviews",
-                "description": "Quản lý phiên học (study_sessions) và thuật toán lặp lại ngắt quãng SM-2 (study_reviews)",
+                "name": "Analytics & Heatmap",
+                "description": "Thống kê chuỗi ôn tập Streak Heatmap",
             },
-            {
-                "name": "User Favorites",
-                "description": "Quản lý danh sách yêu thích decks và flashcards của người dùng (user_favorites)",
-            },
+            {"name": "User Favorites", "description": "Quản lý danh sách yêu thích"},
             {
                 "name": "AI Logs",
-                "description": "Nhật ký telemetry tiến trình sinh thẻ AI (ai_generation_logs)",
+                "description": "Nhật ký telemetry tiến trình sinh thẻ AI",
             },
         ],
         "definitions": {
@@ -332,7 +323,7 @@ def create_app():
     # Khởi tạo và đồng bộ schema cơ sở dữ liệu SQLite
     init_db(app)
 
-    # Đăng ký toàn bộ Blueprints CRUD cho 13 Tables + AI Gateway
+    # Đăng ký toàn bộ Blueprints CRUD cho 13 Tables + AI Gateway + Analytics & IO
     app.register_blueprint(auth_bp)
     app.register_blueprint(ai_gateway_bp)
     app.register_blueprint(system_bp)
@@ -342,12 +333,14 @@ def create_app():
     app.register_blueprint(folders_bp)
     app.register_blueprint(documents_bp)
     app.register_blueprint(decks_bp)
+    app.register_blueprint(deck_io_bp)
     app.register_blueprint(cards_bp)
     app.register_blueprint(tags_bp)
     app.register_blueprint(card_tags_bp)
     app.register_blueprint(study_bp)
     app.register_blueprint(favorites_bp)
     app.register_blueprint(ai_logs_bp)
+    app.register_blueprint(analytics_bp)
 
     Swagger(app, config=swagger_config, template=swagger_template)
 

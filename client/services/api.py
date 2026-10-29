@@ -54,10 +54,12 @@ from services.api_decks import (
     get_category_by_id,
     get_deck_by_id,
     get_decks,
+    get_export_deck_url,
     get_favorite_by_id,
     get_favorites,
     get_folder_by_id,
     get_folders,
+    import_deck_cards,
     update_category,
     update_deck,
     update_folder,
@@ -83,6 +85,7 @@ from services.api_cards import (
     remove_card_tag,
     transcribe_audio,
     update_card,
+    update_card_notes,
     update_tag,
 )
 
@@ -100,6 +103,7 @@ from services.api_study import (
     get_ai_logs,
     get_document_by_id,
     get_documents,
+    get_streak_heatmap,
     get_study_review_by_id,
     get_study_reviews,
     get_study_session_by_id,
@@ -159,12 +163,15 @@ __all__ = [
     "create_deck",
     "update_deck",
     "delete_deck",
+    "import_deck_cards",
+    "get_export_deck_url",
     # Cards
     "get_cards",
     "get_card_by_id",
     "create_card",
     "create_cards_batch",
     "update_card",
+    "update_card_notes",
     "delete_card",
     "delete_all_cards",
     # Tags & Card-Tags
@@ -193,6 +200,7 @@ __all__ = [
     "get_study_review_by_id",
     "submit_srs_review",
     "delete_study_review",
+    "get_streak_heatmap",
     # Favorites
     "get_favorites",
     "get_favorite_by_id",

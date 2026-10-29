@@ -11,6 +11,7 @@ from nicegui import ui
 from components import app_shell, network_error_banner, show_toast
 from components.study_congrats import render_study_congrats
 from pages.study.components.deck_picker_view import render_deck_picker_view
+from pages.study.components.note_dialog import open_card_note_dialog
 from pages.study.components.study_empty_state import render_study_empty_state
 from pages.study.components.study_header import render_focus_header
 from pages.study.components.study_stage import create_study_stage
@@ -138,10 +139,15 @@ async def render_study_page(
             with ui.column().classes(
                 "study-focus-container w-full max-w-2xl mx-auto gap-4 py-4"
             ):
+
+                def handle_reverse(is_rev: bool) -> None:
+                    stage.set_reverse_mode(is_rev)
+
                 header_refs = render_focus_header(
                     deck_title=deck_title,
                     total_cards=total_count,
                     on_exit=lambda: ui.navigate.to("/study"),
+                    on_toggle_reverse=handle_reverse,
                 )
 
                 async def handle_rating(rating: int) -> None:
@@ -188,5 +194,20 @@ async def render_study_page(
                 )
                 congrats.set_visibility(False)
 
-                stage = create_study_stage(on_rating=handle_rating)
+                def handle_edit_note(card_obj: Dict[str, Any]) -> None:
+                    cid = int(card_obj.get("id", 0))
+                    cnotes = card_obj.get("personal_notes")
+
+                    def on_note_saved(saved_note: str) -> None:
+                        card_obj["personal_notes"] = saved_note
+                        stage.render_card(card_obj)
+
+                    open_card_note_dialog(
+                        card_id=cid, current_notes=cnotes, on_saved=on_note_saved
+                    )
+
+                stage = create_study_stage(
+                    on_rating=handle_rating,
+                    on_edit_note=handle_edit_note,
+                )
                 stage.render_card(cards_state[0])

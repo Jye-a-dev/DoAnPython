@@ -75,3 +75,33 @@ async def delete_deck(deck_id: int) -> dict[str, Any]:
         return res.json()
     except Exception as err:
         return _handle_http_error(err, "xóa deck")
+
+
+async def import_deck_cards(
+    deck_id: int,
+    raw_text: Optional[str] = None,
+    file_bytes: Optional[bytes] = None,
+    filename: Optional[str] = None,
+) -> dict[str, Any]:
+    """Nhập flashcards vào bộ thẻ từ văn bản hoặc file CSV/XLSX."""
+    try:
+        client = get_client()
+        if file_bytes and filename:
+            files = {"file": (filename, file_bytes, "application/octet-stream")}
+            data = {"text": raw_text or ""} if raw_text else None
+            res = await client.post(f"/decks/{deck_id}/import", files=files, data=data)
+        else:
+            res = await client.post(
+                f"/decks/{deck_id}/import", json={"text": raw_text or ""}
+            )
+        res.raise_for_status()
+        return res.json()
+    except Exception as err:
+        return _handle_http_error(err, "nhập thẻ vào bộ thẻ")
+
+
+def get_export_deck_url(deck_id: int, export_format: str = "pdf") -> str:
+    """Tạo URL tải file export trực tiếp từ Backend (Port 3000)."""
+    from services.api_base import BACKEND_API_URL
+
+    return f"{BACKEND_API_URL}/decks/{deck_id}/export?format={export_format}"

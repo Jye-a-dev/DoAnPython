@@ -13,6 +13,7 @@ from services.cards.cards_service import (
     get_card_by_id,
     get_cards,
     update_card,
+    update_card_notes,
 )
 from services.cards.tags_service import (
     add_card_tag,
@@ -37,6 +38,7 @@ __all__ = [
     "create_card",
     "create_cards_batch",
     "update_card",
+    "update_card_notes",
     "delete_card",
     "delete_all_cards",
     "get_tags",

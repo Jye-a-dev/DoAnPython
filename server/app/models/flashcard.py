@@ -102,6 +102,7 @@ class Card(db.Model):
     difficulty = db.Column(db.String(20), default="medium", nullable=False)
     tts_text = db.Column(db.Text, nullable=True)
     tts_lang = db.Column(db.String(10), default="en-US", nullable=True)
+    personal_notes = db.Column(db.Text, nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
     updated_at = db.Column(
         db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False
@@ -145,6 +146,7 @@ class Card(db.Model):
         back: str | None = None,
         tts_text: str | None = None,
         tts_lang: str | None = "en-US",
+        personal_notes: str | None = None,
         **kwargs,
     ):
         super().__init__(**kwargs)
@@ -156,6 +158,7 @@ class Card(db.Model):
         self.difficulty = difficulty
         self.tts_text = tts_text
         self.tts_lang = tts_lang if tts_lang is not None else "en-US"
+        self.personal_notes = personal_notes
 
     def to_dict(self):
         return {
@@ -170,6 +173,7 @@ class Card(db.Model):
             "difficulty": self.difficulty,
             "tts_text": self.tts_text,
             "tts_lang": self.tts_lang,
+            "personal_notes": self.personal_notes,
             "tags": [t.name for t in self.tags] if self.tags else [],
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,

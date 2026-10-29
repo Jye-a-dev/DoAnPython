@@ -105,6 +105,20 @@ async def update_card(card_id: int, **fields: Any) -> dict[str, Any]:
         return _handle_http_error(err, "cập nhật card")
 
 
+async def update_card_notes(card_id: int, personal_notes: str) -> dict[str, Any]:
+    """Cập nhật ghi chú cá nhân độc lập không ảnh hưởng câu hỏi/đáp án gốc."""
+    try:
+        client = get_client()
+        res = await client.patch(
+            f"/cards/{card_id}/notes",
+            json={"personal_notes": personal_notes},
+        )
+        res.raise_for_status()
+        return res.json()
+    except Exception as err:
+        return _handle_http_error(err, "cập nhật ghi chú cá nhân")
+
+
 async def delete_card(card_id: int) -> dict[str, Any]:
     try:
         client = get_client()

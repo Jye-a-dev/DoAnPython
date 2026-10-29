@@ -122,6 +122,21 @@ def init_db(app):
 
         db.create_all()
 
+        # Đồng bộ cột mới personal_notes cho database SQLite hiện hữu
+        if db_uri.startswith("sqlite:///"):
+            raw_conn = db.engine.raw_connection()
+            try:
+                cursor = raw_conn.cursor()
+                cols = [r[1] for r in cursor.execute("PRAGMA table_info(cards)").fetchall()]
+                if cols and "personal_notes" not in cols:
+                    cursor.execute("ALTER TABLE cards ADD COLUMN personal_notes TEXT NULL;")
+                    raw_conn.commit()
+                cursor.close()
+            except Exception:
+                pass
+            finally:
+                raw_conn.close()
+
         # Kích hoạt WAL mode một lần duy nhất cho cơ sở dữ liệu SQLite file
         if db_uri.startswith("sqlite:///") and db_uri != "sqlite:///:memory:":
             raw_conn = db.engine.raw_connection()
