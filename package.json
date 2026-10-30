@@ -1,0 +1,31 @@
+{
+  "name": "eduflash-ai",
+  "version": "1.0.0",
+  "description": "EduFlash AI Monorepo - Smart Flashcard System with Offline AI & SM-2 Spaced Repetition",
+  "private": true,
+  "scripts": {
+    "postinstall": "node scripts/setup.js",
+    "setup": "node scripts/setup.js",
+    "download-model": "node scripts/download_model.js",
+    "dev": "node server/scripts/dev.js",
+    "start": "node server/scripts/dev.js",
+    "start:py": "python server/scripts/run_e2e_stack.py",
+    "start:server": "node server/scripts/dev.js --server",
+    "start:pipeline": "node server/scripts/dev.js --pipeline",
+    "start:client": "node server/scripts/dev.js --client",
+    "test:server": "python -m pytest server/tests -v"
+  },
+  "keywords": [
+    "edtech",
+    "flashcard",
+    "spaced-repetition",
+    "sm2",
+    "qwen",
+    "whisper",
+    "nicegui",
+    "flask"
+  ],
+  "author": "EduFlash AI Team",
+  "license": "MIT"
+}
+

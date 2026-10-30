@@ -27,3 +27,8 @@ pipeline/data/processed/
 # IDE configurations
 .vscode/
 .idea/
+
+# Node
+node_modules/
+package-lock.json
+
