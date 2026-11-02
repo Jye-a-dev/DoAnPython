@@ -33,6 +33,7 @@ from services.decks.favorites_service import (
     delete_favorite,
     get_favorite_by_id,
     get_favorites,
+    toggle_favorite,
 )
 
 __all__ = [
@@ -57,4 +58,5 @@ __all__ = [
     "get_favorite_by_id",
     "add_favorite",
     "delete_favorite",
+    "toggle_favorite",
 ]

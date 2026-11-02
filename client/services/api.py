@@ -60,6 +60,7 @@ from services.api_decks import (
     get_folder_by_id,
     get_folders,
     import_deck_cards,
+    toggle_favorite,
     update_category,
     update_deck,
     update_folder,
@@ -206,6 +207,7 @@ __all__ = [
     "get_favorite_by_id",
     "add_favorite",
     "delete_favorite",
+    "toggle_favorite",
     # Generation & Health
     "generate_cards",
     "transcribe_audio",

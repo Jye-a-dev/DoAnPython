@@ -66,3 +66,24 @@ async def delete_favorite(fav_id: int) -> dict[str, Any]:
         return res.json()
     except Exception as err:
         return _handle_http_error(err, "xóa favorite")
+
+
+async def toggle_favorite(
+    user_id: int = 1,
+    deck_id: Optional[int] = None,
+    card_id: Optional[int] = None,
+    fav_id: Optional[int] = None,
+) -> dict[str, Any]:
+    """Bật/tắt trạng thái yêu thích (bookmark) cho deck hoặc card."""
+    try:
+        if fav_id:
+            return await delete_favorite(fav_id)
+        favs = await get_favorites(user_id=user_id, deck_id=deck_id, card_id=card_id)
+        if isinstance(favs, list) and favs:
+            first_id = favs[0].get("id")
+            if first_id:
+                return await delete_favorite(first_id)
+        return await add_favorite(user_id=user_id, deck_id=deck_id, card_id=card_id)
+    except Exception as err:
+        return _handle_http_error(err, "toggle favorite")
+
