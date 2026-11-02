@@ -3,8 +3,12 @@ from __future__ import annotations
 from typing import Any, Callable, Dict, Optional
 from nicegui import ui
 
-from components.deck_detail_dialog import render_deck_detail_dialog
-from components.deck_manager_dialog import open_deck_manager_dialog
+from components.deck_detail_dialog import (
+    build_category_options,
+    build_folder_options,
+    open_deck_detail_dialog,
+    open_deck_manager_dialog,
+)
 from components.layout import TOKENS, show_toast
 from services import api
 
@@ -320,11 +324,16 @@ def render_create_deck_dialog(
     }
 
 
+render_deck_detail_dialog = open_deck_detail_dialog
+
 __all__ = [
     "render_create_category_dialog",
     "render_create_folder_dialog",
     "render_create_deck_dialog",
     "render_deck_detail_dialog",
+    "open_deck_detail_dialog",
     "open_deck_manager_dialog",
+    "build_category_options",
+    "build_folder_options",
 ]
 

@@ -39,10 +39,24 @@ async def get_deck_by_id(deck_id: int) -> dict[str, Any]:
         return _handle_http_error(err, "lấy chi tiết deck")
 
 
-async def create_deck(title: str, user_id: int = 1, **fields: Any) -> dict[str, Any]:
+_UNSET = object()
+
+
+async def create_deck(
+    title: str,
+    user_id: int = 1,
+    category_id: Optional[int] = None,
+    folder_id: Optional[int] = None,
+    **fields: Any,
+) -> dict[str, Any]:
     try:
         client = get_client()
-        payload = {"title": title, "user_id": user_id}
+        payload: dict[str, Any] = {
+            "title": title,
+            "user_id": user_id,
+            "category_id": category_id,
+            "folder_id": folder_id,
+        }
         payload.update(fields)
         res = await client.post("/decks", json=payload)
         res.raise_for_status()
@@ -52,13 +66,21 @@ async def create_deck(title: str, user_id: int = 1, **fields: Any) -> dict[str, 
 
 
 async def update_deck(
-    deck_id: int, title: Optional[str] = None, **fields: Any
+    deck_id: int,
+    title: Optional[str] = None,
+    category_id: Optional[int] = _UNSET,  # type: ignore[assignment]
+    folder_id: Optional[int] = _UNSET,  # type: ignore[assignment]
+    **fields: Any,
 ) -> dict[str, Any]:
     try:
         client = get_client()
-        payload = {}
+        payload: dict[str, Any] = {}
         if title is not None:
             payload["title"] = title
+        if category_id is not _UNSET:
+            payload["category_id"] = category_id
+        if folder_id is not _UNSET:
+            payload["folder_id"] = folder_id
         payload.update(fields)
         res = await client.put(f"/decks/{deck_id}", json=payload)
         res.raise_for_status()

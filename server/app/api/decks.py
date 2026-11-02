@@ -205,7 +205,7 @@ def get_deck_cards_endpoint(deck_id: int):
     return jsonify([c.to_dict() for c in cards]), 200
 
 
-@decks_bp.route("/<int:deck_id>", methods=["PUT"])
+@decks_bp.route("/<int:deck_id>", methods=["PUT", "PATCH"])
 def update_deck_detail(deck_id: int):
     """
     Cập nhật thông tin bộ thẻ (PUT /api/decks/{id})

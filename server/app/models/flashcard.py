@@ -75,6 +75,9 @@ class Deck(db.Model):
             "description": self.description,
             "is_public": self.is_public,
             "card_count": len(self.cards) if self.cards else 0,
+            "category_name": self.category.name if self.category else None,
+            "category_color": self.category.color_code if self.category else None,
+            "folder_name": self.folder.name if self.folder else None,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
         }
