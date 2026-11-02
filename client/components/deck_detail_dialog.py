@@ -41,7 +41,9 @@ def build_folder_options(folders: List[Dict[str, Any]]) -> Dict[Optional[int], s
     return options
 
 
-def build_category_options(categories: List[Dict[str, Any]]) -> Dict[Optional[int], str]:
+def build_category_options(
+    categories: List[Dict[str, Any]],
+) -> Dict[Optional[int], str]:
     """Tạo dict options danh mục môn học với badge trực quan."""
     options: Dict[Optional[int], str] = {None: "⚪ Không phân loại"}
     for cat in categories:
@@ -63,7 +65,9 @@ async def open_deck_detail_dialog(
     # 1. Nạp đồng thời dữ liệu deck, categories, folders và cards
     deck_info = await api.get_deck_by_id(deck_id)
     if isinstance(deck_info, dict) and deck_info.get("error"):
-        show_toast(deck_info.get("message", f"Không tìm thấy bộ thẻ #{deck_id}"), "warning")
+        show_toast(
+            deck_info.get("message", f"Không tìm thấy bộ thẻ #{deck_id}"), "warning"
+        )
         if on_refresh:
             res = on_refresh()
             if asyncio.iscoroutine(res):
@@ -71,22 +75,34 @@ async def open_deck_detail_dialog(
         return
 
     deck_obj: Dict[str, Any] = (
-        deck_info if isinstance(deck_info, dict) else {"id": deck_id, "title": f"Bộ thẻ #{deck_id}"}
+        deck_info
+        if isinstance(deck_info, dict)
+        else {"id": deck_id, "title": f"Bộ thẻ #{deck_id}"}
     )
 
     categories_resp = await api.get_categories()
     folders_resp = await api.get_folders()
-    categories_list: List[Dict[str, Any]] = categories_resp if isinstance(categories_resp, list) else []
-    folders_list: List[Dict[str, Any]] = folders_resp if isinstance(folders_resp, list) else []
+    categories_list: List[Dict[str, Any]] = (
+        categories_resp if isinstance(categories_resp, list) else []
+    )
+    folders_list: List[Dict[str, Any]] = (
+        folders_resp if isinstance(folders_resp, list) else []
+    )
 
-    cat_map: Dict[int, Dict[str, Any]] = {int(c["id"]): c for c in categories_list if "id" in c}
-    folder_map: Dict[int, Dict[str, Any]] = {int(f["id"]): f for f in folders_list if "id" in f}
+    cat_map: Dict[int, Dict[str, Any]] = {
+        int(c["id"]): c for c in categories_list if "id" in c
+    }
+    folder_map: Dict[int, Dict[str, Any]] = {
+        int(f["id"]): f for f in folders_list if "id" in f
+    }
 
     category_options = build_category_options(categories_list)
     folder_options = build_folder_options(folders_list)
 
     cards_resp = await api.get_cards(deck_id=deck_id)
-    cards_state: List[Dict[str, Any]] = list(cards_resp if isinstance(cards_resp, list) else [])
+    cards_state: List[Dict[str, Any]] = list(
+        cards_resp if isinstance(cards_resp, list) else []
+    )
 
     state: Dict[str, Any] = {
         "title": deck_obj.get("title", f"Bộ thẻ #{deck_id}"),
@@ -113,9 +129,15 @@ async def open_deck_detail_dialog(
         "w-full max-w-4xl p-6 md:p-8 rounded-3xl bg-white shadow-2xl border border-slate-100 "
         "gap-5 max-h-[90vh] flex flex-col overflow-hidden"
     ):
-        header_row = ui.row().classes("items-start justify-between w-full pb-4 border-b border-slate-100 flex-wrap gap-3")
-        action_bar = ui.row().classes("items-center justify-between w-full gap-3 flex-wrap")
-        cards_scroll = ui.column().classes("w-full max-h-96 overflow-y-auto space-y-3 pr-1")
+        header_row = ui.row().classes(
+            "items-start justify-between w-full pb-4 border-b border-slate-100 flex-wrap gap-3"
+        )
+        action_bar = ui.row().classes(
+            "items-center justify-between w-full gap-3 flex-wrap"
+        )
+        cards_scroll = ui.column().classes(
+            "w-full max-h-96 overflow-y-auto space-y-3 pr-1"
+        )
 
         async def trigger_refresh() -> None:
             if on_refresh:
@@ -137,9 +159,15 @@ async def open_deck_detail_dialog(
             with edit_dlg, ui.card().classes(
                 "w-full max-w-md p-6 rounded-3xl bg-white shadow-2xl border border-slate-100 gap-4"
             ):
-                with ui.row().classes("items-center justify-between w-full pb-2 border-b border-slate-100"):
-                    ui.label("Chỉnh sửa thông tin Bộ thẻ").classes("text-base font-black text-slate-900")
-                    ui.button(icon="close", on_click=edit_dlg.close).props("flat dense round")
+                with ui.row().classes(
+                    "items-center justify-between w-full pb-2 border-b border-slate-100"
+                ):
+                    ui.label("Chỉnh sửa thông tin Bộ thẻ").classes(
+                        "text-base font-black text-slate-900"
+                    )
+                    ui.button(icon="close", on_click=edit_dlg.close).props(
+                        "flat dense round"
+                    )
 
                 title_input = (
                     ui.input(label="Tên bộ thẻ", value=state["title"])
@@ -147,7 +175,11 @@ async def open_deck_detail_dialog(
                     .classes("w-full bg-white")
                 )
 
-                cur_cat_val = int(state["category_id"]) if state.get("category_id") is not None else None
+                cur_cat_val = (
+                    int(state["category_id"])
+                    if state.get("category_id") is not None
+                    else None
+                )
                 cat_select = (
                     ui.select(
                         label="Danh mục môn học",
@@ -158,21 +190,27 @@ async def open_deck_detail_dialog(
                     .classes("w-full bg-white")
                 )
 
-                cur_folder_val = int(state["folder_id"]) if state.get("folder_id") is not None else None
+                cur_folder_val = (
+                    int(state["folder_id"])
+                    if state.get("folder_id") is not None
+                    else None
+                )
                 folder_select = (
                     ui.select(
                         label="Thư mục lưu trữ",
                         options=folder_options,
-                        value=cur_folder_val if cur_folder_val in folder_options else None,
+                        value=(
+                            cur_folder_val if cur_folder_val in folder_options else None
+                        ),
                     )
                     .props("outlined dense")
                     .classes("w-full bg-white")
                 )
 
                 with ui.row().classes("w-full justify-end gap-2 pt-2"):
-                    ui.button("Hủy", on_click=edit_dlg.close).props("flat dense").classes(
-                        "text-slate-500 font-bold text-xs"
-                    )
+                    ui.button("Hủy", on_click=edit_dlg.close).props(
+                        "flat dense"
+                    ).classes("text-slate-500 font-bold text-xs")
 
                     async def handle_save_changes() -> None:
                         new_title = (title_input.value or "").strip()
@@ -187,24 +225,32 @@ async def open_deck_detail_dialog(
                             folder_id=folder_select.value,
                         )
                         if isinstance(res, dict) and res.get("error"):
-                            show_toast(res.get("message", "Lỗi cập nhật bộ thẻ"), "negative")
+                            show_toast(
+                                res.get("message", "Lỗi cập nhật bộ thẻ"), "negative"
+                            )
                             return
 
                         state["title"] = new_title
                         state["category_id"] = cat_select.value
                         state["folder_id"] = folder_select.value
-                        deck_obj.update({
-                            "title": new_title,
-                            "category_id": cat_select.value,
-                            "folder_id": folder_select.value,
-                        })
+                        deck_obj.update(
+                            {
+                                "title": new_title,
+                                "category_id": cat_select.value,
+                                "folder_id": folder_select.value,
+                            }
+                        )
 
-                        show_toast("Đã cập nhật thông tin bộ thẻ thành công!", "positive")
+                        show_toast(
+                            "Đã cập nhật thông tin bộ thẻ thành công!", "positive"
+                        )
                         edit_dlg.close()
                         render_header()
                         await trigger_refresh()
 
-                    ui.button("Lưu thay đổi", icon="save", on_click=handle_save_changes).classes(
+                    ui.button(
+                        "Lưu thay đổi", icon="save", on_click=handle_save_changes
+                    ).classes(
                         "bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-4 py-2 rounded-xl text-xs"
                     )
             edit_dlg.open()
@@ -233,7 +279,11 @@ async def open_deck_detail_dialog(
 
                         # Thanh Breadcrumb / Tag trực quan dưới tiêu đề
                         with ui.row().classes("items-center gap-2 flex-wrap text-xs"):
-                            cid = int(state["category_id"]) if state.get("category_id") is not None else None
+                            cid = (
+                                int(state["category_id"])
+                                if state.get("category_id") is not None
+                                else None
+                            )
                             if cid and cid in cat_map:
                                 cat_data = cat_map[cid]
                                 c_color = cat_data.get("color_code") or "#3B82F6"
@@ -242,21 +292,33 @@ async def open_deck_detail_dialog(
                                     color=c_color,
                                 ).props("rounded").classes(
                                     "text-xs font-bold px-2.5 py-0.5 shadow-2xs text-white"
-                                ).style(f"background-color: {c_color};")
+                                ).style(
+                                    f"background-color: {c_color};"
+                                )
 
-                            fid = int(state["folder_id"]) if state.get("folder_id") is not None else None
+                            fid = (
+                                int(state["folder_id"])
+                                if state.get("folder_id") is not None
+                                else None
+                            )
                             if fid and fid in folder_options:
                                 f_label = folder_options[fid]
-                                ui.label(f_label).classes("text-xs text-slate-500 font-medium")
+                                ui.label(f_label).classes(
+                                    "text-xs text-slate-500 font-medium"
+                                )
                             else:
-                                ui.label("📁 Thư mục gốc (Root)").classes("text-xs text-slate-400 italic")
+                                ui.label("📁 Thư mục gốc (Root)").classes(
+                                    "text-xs text-slate-400 italic"
+                                )
 
                             ui.button(
                                 icon="edit",
                                 on_click=open_edit_deck_dialog,
                             ).props("flat dense round").classes(
                                 "text-slate-400 hover:text-indigo-600 text-xs cursor-pointer -ml-1"
-                            ).tooltip("Đổi Thư mục / Môn học")
+                            ).tooltip(
+                                "Đổi Thư mục / Môn học"
+                            )
 
                         with ui.row().classes("items-center gap-2 pt-1"):
                             ui.label(f"{len(cards_state)} thẻ").classes(
@@ -267,34 +329,51 @@ async def open_deck_detail_dialog(
                             )
 
                 with ui.row().classes("items-center gap-2 shrink-0"):
+
                     async def handle_delete_deck():
                         async def on_deck_deleted():
                             dialog.close()
                             await trigger_refresh()
 
-                        await confirm_delete_deck_dialog(deck_id, state["title"], on_deleted=on_deck_deleted)
+                        await confirm_delete_deck_dialog(
+                            deck_id, state["title"], on_deleted=on_deck_deleted
+                        )
 
-                    ui.button("🗑️ Xóa Bộ Thẻ", on_click=handle_delete_deck).props("flat dense").classes(
+                    ui.button("🗑️ Xóa Bộ Thẻ", on_click=handle_delete_deck).props(
+                        "flat dense"
+                    ).classes(
                         "text-xs font-bold text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded-lg px-2 py-1 cursor-pointer"
                     )
-                    ui.button(icon="close", on_click=dialog.close).props("flat dense round").classes(
-                        "text-slate-400 hover:text-slate-700 cursor-pointer"
-                    )
+                    ui.button(icon="close", on_click=dialog.close).props(
+                        "flat dense round"
+                    ).classes("text-slate-400 hover:text-slate-700 cursor-pointer")
 
         with action_bar:
             with ui.row().classes("items-center gap-2 flex-1 min-w-[280px]"):
+
                 def open_add_modal():
                     open_card_dialog(deck_id=deck_id, card=None, on_saved=reload_cards)
 
-                ui.button("+ Thêm Thẻ Mới", icon="add", on_click=open_add_modal).classes(
+                ui.button(
+                    "+ Thêm Thẻ Mới", icon="add", on_click=open_add_modal
+                ).classes(
                     "bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-4 py-2 rounded-xl text-xs cursor-pointer shadow-xs transition"
                 )
 
                 def open_io_modal():
-                    from pages.decks.components.deck_io_dialog import open_deck_io_dialog
-                    open_deck_io_dialog(deck_id=deck_id, deck_title=state["title"], on_imported=reload_cards)
+                    from pages.decks.components.deck_io_dialog import (
+                        open_deck_io_dialog,
+                    )
 
-                ui.button("Xuất / Nhập", icon="swap_horiz", on_click=open_io_modal).props("outline").classes(
+                    open_deck_io_dialog(
+                        deck_id=deck_id,
+                        deck_title=state["title"],
+                        on_imported=reload_cards,
+                    )
+
+                ui.button(
+                    "Xuất / Nhập", icon="swap_horiz", on_click=open_io_modal
+                ).props("outline").classes(
                     "text-indigo-600 border-indigo-200 bg-indigo-50/50 hover:bg-indigo-50 font-bold px-3 py-2 rounded-xl text-xs cursor-pointer shadow-xs transition"
                 )
 
@@ -305,7 +384,9 @@ async def open_deck_detail_dialog(
                 ui.input(
                     placeholder="Tìm kiếm nhanh câu hỏi...",
                     on_change=on_search,
-                ).props("outlined dense clearable").classes("flex-1 max-w-xs text-xs bg-slate-50 rounded-xl")
+                ).props("outlined dense clearable").classes(
+                    "flex-1 max-w-xs text-xs bg-slate-50 rounded-xl"
+                )
 
             ui.button(
                 "Ôn tập ngay (Focus Mode)",
@@ -319,13 +400,16 @@ async def open_deck_detail_dialog(
             cards_scroll.clear()
             q_filter = state["search_query"]
             displayed_cards = [
-                c for c in cards_state
+                c
+                for c in cards_state
                 if not q_filter or q_filter in (c.get("question") or "").lower()
             ]
 
             with cards_scroll:
                 if not displayed_cards:
-                    with ui.column().classes("w-full py-10 items-center text-center gap-2 text-slate-400"):
+                    with ui.column().classes(
+                        "w-full py-10 items-center text-center gap-2 text-slate-400"
+                    ):
                         ui.icon("inbox", size="36px")
                         ui.label(
                             "Không tìm thấy thẻ nào phù hợp."
@@ -335,13 +419,18 @@ async def open_deck_detail_dialog(
                     return
 
                 for idx, card in enumerate(displayed_cards):
+
                     async def handle_delete_card(cid: int):
                         del_c_res = await api.delete_card(cid)
                         if isinstance(del_c_res, dict) and del_c_res.get("error"):
-                            show_toast(del_c_res.get("message", "Lỗi xóa thẻ"), "negative")
+                            show_toast(
+                                del_c_res.get("message", "Lỗi xóa thẻ"), "negative"
+                            )
                         else:
                             show_toast("Đã xóa thẻ thành công", "info")
-                            cards_state[:] = [c for c in cards_state if c.get("id") != cid]
+                            cards_state[:] = [
+                                c for c in cards_state if c.get("id") != cid
+                            ]
                             render_header()
                             render_cards()
                             await trigger_refresh()

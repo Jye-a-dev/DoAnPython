@@ -73,7 +73,9 @@ async def render_decks_page() -> None:
         )
 
         try:
-            from pages.decks.components.deck_create_dialog import render_create_deck_modal
+            from pages.decks.components.deck_create_dialog import (
+                render_create_deck_modal,
+            )
 
             deck_dialog_ref = render_create_deck_modal(
                 active_user_id=active_user_id,
@@ -176,62 +178,120 @@ async def render_decks_page() -> None:
                 fav_id=f_id,
                 on_toggle_favorite=lambda d=deck: toggle_fav_handler(d),
                 on_open_detail=lambda d_id=did: open_detail_modal(d_id),
-                on_delete_deck=lambda d_id=did, d_title=deck.get("title", ""): delete_deck_handler(d_id, d_title),
+                on_delete_deck=lambda d_id=did, d_title=deck.get(
+                    "title", ""
+                ): delete_deck_handler(d_id, d_title),
             )
 
         def _render_deck_grid(items: List[Dict[str, Any]]) -> None:
-            with ui.element("div").classes("grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5 w-full"):
+            with ui.element("div").classes(
+                "grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5 w-full"
+            ):
                 for deck in items:
                     _render_deck_item(deck)
 
         @ui.refreshable
         def render_decks_toolbar_and_content() -> None:
-            fav_count = sum(1 for d in decks_list if (d.get("id") in deck_fav_map or d.get("is_favorite")))
+            fav_count = sum(
+                1
+                for d in decks_list
+                if (d.get("id") in deck_fav_map or d.get("is_favorite"))
+            )
 
-            with ui.row().classes("items-center justify-between w-full bg-white border border-slate-200 rounded-2xl p-2 shadow-2xs flex-wrap gap-2"):
+            with ui.row().classes(
+                "items-center justify-between w-full bg-white border border-slate-200 rounded-2xl p-2 shadow-2xs flex-wrap gap-2"
+            ):
                 with ui.row().classes("items-center gap-2 flex-wrap"):
-                    ui.button("TẤT CẢ", icon="grid_view", on_click=lambda: set_filter_mode("all")).props("flat unelevated no-caps").classes(
+                    ui.button(
+                        "TẤT CẢ",
+                        icon="grid_view",
+                        on_click=lambda: set_filter_mode("all"),
+                    ).props("flat unelevated no-caps").classes(
                         BTN_ACTIVE if filter_mode == "all" else BTN_INACTIVE
                     )
-                    ui.button(f"YÊU THÍCH (⭐ {fav_count})", icon="star", on_click=lambda: set_filter_mode("favorites")).props("flat unelevated no-caps").classes(
+                    ui.button(
+                        f"YÊU THÍCH (⭐ {fav_count})",
+                        icon="star",
+                        on_click=lambda: set_filter_mode("favorites"),
+                    ).props("flat unelevated no-caps").classes(
                         BTN_ACTIVE if filter_mode == "favorites" else BTN_INACTIVE
                     )
-                    ui.button("THEO THƯ MỤC", icon="folder", on_click=lambda: set_filter_mode("folders")).props("flat unelevated no-caps").classes(
+                    ui.button(
+                        "THEO THƯ MỤC",
+                        icon="folder",
+                        on_click=lambda: set_filter_mode("folders"),
+                    ).props("flat unelevated no-caps").classes(
                         BTN_ACTIVE if filter_mode == "folders" else BTN_INACTIVE
                     )
 
                 with ui.row().classes("items-center gap-2"):
                     if sidebar_category_id is not None:
                         cat_obj = categories_map.get(sidebar_category_id, {})
-                        with ui.row().classes("items-center gap-1 px-3 py-1 rounded-full bg-blue-50 text-blue-700 text-xs font-bold border border-blue-200"):
+                        with ui.row().classes(
+                            "items-center gap-1 px-3 py-1 rounded-full bg-blue-50 text-blue-700 text-xs font-bold border border-blue-200"
+                        ):
                             ui.label(f"Môn: {cat_obj.get('name', '')}")
-                            ui.button(icon="close", on_click=lambda: apply_sidebar_filter(None, None)).props("flat dense round").classes("text-blue-500 hover:text-blue-800 text-[10px]")
+                            ui.button(
+                                icon="close",
+                                on_click=lambda: apply_sidebar_filter(None, None),
+                            ).props("flat dense round").classes(
+                                "text-blue-500 hover:text-blue-800 text-[10px]"
+                            )
 
                     if sidebar_folder_id is not None:
                         fold_obj = folders_map.get(sidebar_folder_id, {})
-                        with ui.row().classes("items-center gap-1 px-3 py-1 rounded-full bg-indigo-50 text-indigo-700 text-xs font-bold border border-indigo-200"):
+                        with ui.row().classes(
+                            "items-center gap-1 px-3 py-1 rounded-full bg-indigo-50 text-indigo-700 text-xs font-bold border border-indigo-200"
+                        ):
                             ui.label(f"Thư mục: {fold_obj.get('name', '')}")
-                            ui.button(icon="close", on_click=lambda: apply_sidebar_filter(None, None)).props("flat dense round").classes("text-indigo-500 hover:text-indigo-800 text-[10px]")
+                            ui.button(
+                                icon="close",
+                                on_click=lambda: apply_sidebar_filter(None, None),
+                            ).props("flat dense round").classes(
+                                "text-indigo-500 hover:text-indigo-800 text-[10px]"
+                            )
 
             filtered = decks_list
             if sidebar_category_id is not None:
-                filtered = [d for d in filtered if d.get("category_id") == sidebar_category_id]
+                filtered = [
+                    d for d in filtered if d.get("category_id") == sidebar_category_id
+                ]
             if sidebar_folder_id is not None:
-                filtered = [d for d in filtered if d.get("folder_id") == sidebar_folder_id]
+                filtered = [
+                    d for d in filtered if d.get("folder_id") == sidebar_folder_id
+                ]
 
             if filter_mode == "all":
                 if not filtered:
-                    empty_deck_state("Không tìm thấy bộ thẻ nào phù hợp!", "Hãy tạo bộ thẻ mới.", "folder_off", "Tạo Deck mới ngay", deck_dialog_ref["open"])
+                    empty_deck_state(
+                        "Không tìm thấy bộ thẻ nào phù hợp!",
+                        "Hãy tạo bộ thẻ mới.",
+                        "folder_off",
+                        "Tạo Deck mới ngay",
+                        deck_dialog_ref["open"],
+                    )
                 else:
                     _render_deck_grid(filtered)
 
             elif filter_mode == "favorites":
-                fav_decks = [d for d in filtered if (d.get("id") in deck_fav_map or d.get("is_favorite"))]
+                fav_decks = [
+                    d
+                    for d in filtered
+                    if (d.get("id") in deck_fav_map or d.get("is_favorite"))
+                ]
                 if not fav_decks:
-                    with ui.card().classes("w-full bg-amber-50/70 border border-amber-200/80 rounded-3xl p-8 text-center items-center justify-center gap-3 my-4 shadow-xs"):
-                        ui.icon("star_outline", size="32px").classes("text-amber-500 mx-auto")
-                        ui.label("Chưa có bộ thẻ yêu thích").classes("text-lg font-bold text-amber-900")
-                        ui.label("Nhấn biểu tượng ⭐ để ghim bộ thẻ vào đây!").classes("text-sm text-amber-700 max-w-md mx-auto")
+                    with ui.card().classes(
+                        "w-full bg-amber-50/70 border border-amber-200/80 rounded-3xl p-8 text-center items-center justify-center gap-3 my-4 shadow-xs"
+                    ):
+                        ui.icon("star_outline", size="32px").classes(
+                            "text-amber-500 mx-auto"
+                        )
+                        ui.label("Chưa có bộ thẻ yêu thích").classes(
+                            "text-lg font-bold text-amber-900"
+                        )
+                        ui.label("Nhấn biểu tượng ⭐ để ghim bộ thẻ vào đây!").classes(
+                            "text-sm text-amber-700 max-w-md mx-auto"
+                        )
                 else:
                     _render_deck_grid(fav_decks)
 
@@ -248,22 +308,34 @@ async def render_decks_page() -> None:
                         f_decks = by_folder.get(f_id, [])
                         has_folders = True
 
-                        with ui.expansion(f"{f_name} ({len(f_decks)} bộ thẻ)", icon="folder", value=True).classes(
+                        with ui.expansion(
+                            f"{f_name} ({len(f_decks)} bộ thẻ)",
+                            icon="folder",
+                            value=True,
+                        ).classes(
                             "w-full bg-white border border-slate-200 rounded-2xl shadow-xs overflow-hidden"
                         ):
                             if not f_decks:
-                                ui.label("Chưa có bộ thẻ nào trong thư mục này.").classes("text-xs text-slate-400 italic p-4")
+                                ui.label(
+                                    "Chưa có bộ thẻ nào trong thư mục này."
+                                ).classes("text-xs text-slate-400 italic p-4")
                             else:
                                 with ui.element("div").classes("p-4"):
                                     _render_deck_grid(f_decks)
 
                     unclass = by_folder.get(None, [])
                     if unclass or not has_folders:
-                        with ui.expansion(f"Chưa phân loại ({len(unclass)} bộ thẻ)", icon="folder_open", value=True).classes(
+                        with ui.expansion(
+                            f"Chưa phân loại ({len(unclass)} bộ thẻ)",
+                            icon="folder_open",
+                            value=True,
+                        ).classes(
                             "w-full bg-white border border-slate-200 rounded-2xl shadow-xs overflow-hidden"
                         ):
                             if not unclass:
-                                ui.label("Tất cả bộ thẻ đã được phân loại vào thư mục.").classes("text-xs text-slate-400 italic p-4")
+                                ui.label(
+                                    "Tất cả bộ thẻ đã được phân loại vào thư mục."
+                                ).classes("text-xs text-slate-400 italic p-4")
                             else:
                                 with ui.element("div").classes("p-4"):
                                     _render_deck_grid(unclass)
@@ -282,8 +354,14 @@ async def render_decks_page() -> None:
                 if getattr(ui.context.client, "is_deleted", False):
                     return
 
-                if any(api.is_connection_error(r) for r in [d_resp, c_resp, cat_resp, f_resp]):
-                    network_error_banner(on_retry=load_decks_data, message="Không thể kết nối đến máy chủ Backend.")
+                if any(
+                    api.is_connection_error(r)
+                    for r in [d_resp, c_resp, cat_resp, f_resp]
+                ):
+                    network_error_banner(
+                        on_retry=load_decks_data,
+                        message="Không thể kết nối đến máy chủ Backend.",
+                    )
                     return
 
                 nonlocal decks_list, all_cards, categories_list, folders_list, favorites_list
@@ -305,7 +383,11 @@ async def render_decks_page() -> None:
 
                 categories_map = {c["id"]: c for c in categories_list if "id" in c}
                 folders_map = {f["id"]: f for f in folders_list if "id" in f}
-                deck_fav_map = {fav["deck_id"]: fav.get("id", 0) for fav in favorites_list if fav.get("deck_id")}
+                deck_fav_map = {
+                    fav["deck_id"]: fav.get("id", 0)
+                    for fav in favorites_list
+                    if fav.get("deck_id")
+                }
                 for d in decks_list:
                     if d.get("id") in deck_fav_map:
                         d["is_favorite"] = True
@@ -314,23 +396,45 @@ async def render_decks_page() -> None:
                 for c in all_cards:
                     cards_by_deck.setdefault(c.get("deck_id", 0), []).append(c)
 
-                with ui.row().classes("items-center justify-between w-full pb-6 border-b border-slate-200 flex-wrap gap-4"):
+                with ui.row().classes(
+                    "items-center justify-between w-full pb-6 border-b border-slate-200 flex-wrap gap-4"
+                ):
                     with ui.column().classes("gap-1"):
-                        ui.label("Thư Viện Bộ Thẻ Học Tập").classes(f"text-3xl font-black text-{TOKENS['text_primary']} tracking-tight")
-                        ui.label("Quản lý toàn bộ danh mục, thư mục phân cấp và các bộ thẻ ghi nhớ thông minh.").classes(f"text-sm text-{TOKENS['text_secondary']}")
+                        ui.label("Thư Viện Bộ Thẻ Học Tập").classes(
+                            f"text-3xl font-black text-{TOKENS['text_primary']} tracking-tight"
+                        )
+                        ui.label(
+                            "Quản lý toàn bộ danh mục, thư mục phân cấp và các bộ thẻ ghi nhớ thông minh."
+                        ).classes(f"text-sm text-{TOKENS['text_secondary']}")
 
                     with ui.row().classes("items-center gap-2 flex-wrap"):
-                        ui.button("+ Danh mục", icon="palette", on_click=cat_dialog_ref["open"]).props("outline").classes(
+                        ui.button(
+                            "+ Danh mục",
+                            icon="palette",
+                            on_click=cat_dialog_ref["open"],
+                        ).props("outline").classes(
                             f"text-{TOKENS['primary']} border-{TOKENS['primary']} font-bold px-4 py-2.5 rounded-2xl cursor-pointer"
                         )
-                        ui.button("+ Thư mục", icon="create_new_folder", on_click=folder_dialog_ref["open"]).props("outline").classes(
+                        ui.button(
+                            "+ Thư mục",
+                            icon="create_new_folder",
+                            on_click=folder_dialog_ref["open"],
+                        ).props("outline").classes(
                             "text-indigo-600 border-indigo-200 bg-indigo-50/50 font-bold px-4 py-2.5 rounded-2xl cursor-pointer"
                         )
-                        ui.button("+ Tạo Deck Mới", icon="add", on_click=deck_dialog_ref["open"]).classes(
+                        ui.button(
+                            "+ Tạo Deck Mới",
+                            icon="add",
+                            on_click=deck_dialog_ref["open"],
+                        ).classes(
                             f"bg-{TOKENS['primary']} hover:bg-{TOKENS['primary_hover']} text-white font-bold px-6 py-2.5 rounded-2xl shadow-lg cursor-pointer"
                         )
 
-                fav_count = sum(1 for d in decks_list if d.get("id") in deck_fav_map or d.get("is_favorite"))
+                fav_count = sum(
+                    1
+                    for d in decks_list
+                    if d.get("id") in deck_fav_map or d.get("is_favorite")
+                )
                 render_deck_stats_cards(
                     category_count=len(categories_list),
                     folder_count=len(folders_list),
@@ -345,7 +449,11 @@ async def render_decks_page() -> None:
                         categories_list=categories_list,
                         folders_list=folders_list,
                         decks_list=decks_list,
-                        filter_state={"category_id": sidebar_category_id, "folder_id": sidebar_folder_id, "tab": filter_mode},
+                        filter_state={
+                            "category_id": sidebar_category_id,
+                            "folder_id": sidebar_folder_id,
+                            "tab": filter_mode,
+                        },
                         on_filter_change=apply_sidebar_filter,
                         on_create_category=cat_dialog_ref["open"],
                         on_create_folder=folder_dialog_ref["open"],

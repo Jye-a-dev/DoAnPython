@@ -88,9 +88,7 @@ def render_create_category_dialog(
                 return
             desc_val = cat_desc_input.value.strip() if cat_desc_input.value else ""
             color_val = (
-                cat_color_input.value.strip()
-                if cat_color_input.value
-                else "#3B82F6"
+                cat_color_input.value.strip() if cat_color_input.value else "#3B82F6"
             )
 
             res = await api.create_category(
@@ -133,9 +131,7 @@ def render_create_folder_dialog(
                     f"w-8 h-8 rounded-lg bg-{TOKENS['primary_light']} flex items-center justify-center text-{TOKENS['primary']}"
                 ):
                     ui.icon("folder_open", size="20px")
-                ui.label("Tạo Thư Mục Mới").classes(
-                    "text-lg font-bold text-slate-900"
-                )
+                ui.label("Tạo Thư Mục Mới").classes("text-lg font-bold text-slate-900")
             ui.button(icon="close", on_click=dialog.close).props(
                 "flat dense round"
             ).classes("text-slate-400 hover:text-slate-700")
@@ -178,9 +174,7 @@ def render_create_folder_dialog(
         )
 
         async def handle_create_folder() -> None:
-            fname = (
-                folder_name_input.value.strip() if folder_name_input.value else ""
-            )
+            fname = folder_name_input.value.strip() if folder_name_input.value else ""
             if not fname:
                 show_toast("Vui lòng nhập tên thư mục", "warning")
                 return
@@ -206,9 +200,7 @@ def render_create_folder_dialog(
             elif isinstance(res, dict) and res.get("error"):
                 show_toast(res.get("message", "Lỗi tạo thư mục"), "negative")
 
-        ui.button(
-            "TẠO THƯ MỤC", icon="check", on_click=handle_create_folder
-        ).classes(
+        ui.button("TẠO THƯ MỤC", icon="check", on_click=handle_create_folder).classes(
             f"w-full py-3 bg-{TOKENS['primary']} hover:bg-{TOKENS['primary_hover']} text-white font-bold rounded-xl shadow-md transition duration-200 cursor-pointer"
         )
 
@@ -236,9 +228,7 @@ def render_create_deck_dialog(
                     f"w-8 h-8 rounded-lg bg-{TOKENS['primary_light']} flex items-center justify-center text-{TOKENS['primary']}"
                 ):
                     ui.icon("create_new_folder", size="20px")
-                ui.label("Tạo Bộ Thẻ Mới").classes(
-                    "text-lg font-bold text-slate-900"
-                )
+                ui.label("Tạo Bộ Thẻ Mới").classes("text-lg font-bold text-slate-900")
             ui.button(icon="close", on_click=dialog.close).props(
                 "flat dense round"
             ).classes("text-slate-400 hover:text-slate-700")
@@ -282,15 +272,11 @@ def render_create_deck_dialog(
         )
 
         async def handle_create_deck() -> None:
-            title_val = (
-                deck_title_input.value.strip() if deck_title_input.value else ""
-            )
+            title_val = deck_title_input.value.strip() if deck_title_input.value else ""
             if not title_val:
                 show_toast("Vui lòng nhập tiêu đề bộ thẻ", "warning")
                 return
-            desc_val = (
-                deck_desc_input.value.strip() if deck_desc_input.value else ""
-            )
+            desc_val = deck_desc_input.value.strip() if deck_desc_input.value else ""
             cat_id_val = deck_category_select.value
             folder_id_val = deck_folder_select.value
 
@@ -310,9 +296,7 @@ def render_create_deck_dialog(
             elif isinstance(res, dict) and res.get("error"):
                 show_toast(res.get("message", "Lỗi tạo Deck"), "negative")
 
-        ui.button(
-            "TẠO BỘ THẺ NGAY", icon="check", on_click=handle_create_deck
-        ).classes(
+        ui.button("TẠO BỘ THẺ NGAY", icon="check", on_click=handle_create_deck).classes(
             f"w-full py-3 bg-{TOKENS['primary']} hover:bg-{TOKENS['primary_hover']} text-white font-bold rounded-xl shadow-md transition duration-200 cursor-pointer"
         )
 
@@ -336,4 +320,3 @@ __all__ = [
     "build_category_options",
     "build_folder_options",
 ]
-
